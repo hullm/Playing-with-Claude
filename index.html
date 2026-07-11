@@ -1,0 +1,700 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+<meta name="theme-color" content="#0a0a1a" />
+
+<!-- iOS home-screen app behaviour -->
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="apple-mobile-web-app-title" content="Neon Stack" />
+<link rel="apple-touch-icon" href="icons/icon-180.png" />
+<link rel="icon" type="image/png" href="favicon.png" />
+<link rel="manifest" href="manifest.webmanifest" />
+
+<title>Neon Stack</title>
+<style>
+  :root {
+    --safe-t: env(safe-area-inset-top, 0px);
+    --safe-b: env(safe-area-inset-bottom, 0px);
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body {
+    height: 100%;
+    overflow: hidden;
+    background: #0a0a1a;
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", system-ui, sans-serif;
+    color: #fff;
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-touch-callout: none;
+    overscroll-behavior: none;
+    touch-action: none;
+  }
+  #game {
+    position: fixed;
+    inset: 0;
+    display: block;
+    width: 100%;
+    height: 100%;
+  }
+
+  /* Overlay UI */
+  .hud {
+    position: fixed;
+    top: calc(var(--safe-t) + 16px);
+    left: 0; right: 0;
+    text-align: center;
+    pointer-events: none;
+    z-index: 5;
+  }
+  .score {
+    font-size: 64px;
+    font-weight: 800;
+    letter-spacing: 1px;
+    line-height: 1;
+    text-shadow: 0 0 24px rgba(120,180,255,.55), 0 2px 8px rgba(0,0,0,.5);
+    transition: transform .08s ease;
+  }
+  .score.pop { transform: scale(1.18); }
+  .best {
+    margin-top: 8px;
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: rgba(255,255,255,.5);
+  }
+  .combo {
+    margin-top: 10px;
+    font-size: 15px;
+    font-weight: 800;
+    letter-spacing: 1px;
+    color: #ffd54a;
+    text-shadow: 0 0 16px rgba(255,213,74,.7);
+    opacity: 0;
+    transform: translateY(-6px);
+    transition: opacity .15s ease, transform .15s ease;
+  }
+  .combo.show { opacity: 1; transform: translateY(0); }
+
+  /* Center screens (start / game over) */
+  .screen {
+    position: fixed;
+    inset: 0;
+    z-index: 10;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    padding: 24px;
+    padding-bottom: calc(var(--safe-b) + 24px);
+    background: radial-gradient(120% 80% at 50% 30%, rgba(30,20,70,.35), rgba(5,5,20,.82));
+    backdrop-filter: blur(2px);
+    -webkit-backdrop-filter: blur(2px);
+    visibility: visible;
+    transition: opacity .3s ease, visibility .3s ease;
+  }
+  /* visibility:hidden also disables the child buttons, which re-enable
+     pointer-events:auto and would otherwise intercept taps while invisible. */
+  .screen.hidden { opacity: 0; visibility: hidden; pointer-events: none; }
+  .logo {
+    font-size: 52px;
+    font-weight: 900;
+    letter-spacing: 2px;
+    line-height: .95;
+    background: linear-gradient(180deg, #8ad4ff, #c58cff 60%, #ff8ad0);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    filter: drop-shadow(0 0 22px rgba(150,120,255,.55));
+  }
+  .logo small {
+    display: block;
+    font-size: 15px;
+    letter-spacing: 6px;
+    margin-top: 10px;
+    -webkit-text-fill-color: rgba(255,255,255,.55);
+    color: rgba(255,255,255,.55);
+    filter: none;
+  }
+  .hint {
+    margin-top: 26px;
+    font-size: 16px;
+    color: rgba(255,255,255,.72);
+    max-width: 300px;
+    line-height: 1.5;
+  }
+  .btn {
+    margin-top: 28px;
+    pointer-events: auto;
+    border: none;
+    cursor: pointer;
+    font: inherit;
+    font-size: 18px;
+    font-weight: 800;
+    letter-spacing: 1px;
+    color: #0a0a1a;
+    padding: 16px 40px;
+    border-radius: 999px;
+    background: linear-gradient(180deg, #9fe0ff, #6db3ff);
+    box-shadow: 0 8px 30px rgba(90,150,255,.5), inset 0 1px 0 rgba(255,255,255,.6);
+    transition: transform .1s ease, box-shadow .2s ease;
+  }
+  .btn:active { transform: translateY(2px) scale(.98); box-shadow: 0 4px 16px rgba(90,150,255,.4); }
+  .go-title { font-size: 30px; font-weight: 900; letter-spacing: 1px; }
+  .go-stats {
+    margin-top: 22px;
+    display: flex;
+    gap: 40px;
+  }
+  .stat .n { font-size: 44px; font-weight: 900; line-height: 1; }
+  .stat .l { margin-top: 6px; font-size: 12px; letter-spacing: 2px; text-transform: uppercase; color: rgba(255,255,255,.5); }
+  .newbest {
+    margin-top: 18px;
+    font-size: 14px;
+    font-weight: 800;
+    letter-spacing: 2px;
+    color: #ffd54a;
+    text-shadow: 0 0 16px rgba(255,213,74,.7);
+    text-transform: uppercase;
+  }
+
+  /* Mute toggle */
+  .mute {
+    position: fixed;
+    top: calc(var(--safe-t) + 14px);
+    right: 16px;
+    z-index: 8;
+    width: 40px; height: 40px;
+    border-radius: 12px;
+    border: 1px solid rgba(255,255,255,.15);
+    background: rgba(255,255,255,.06);
+    color: #fff;
+    font-size: 18px;
+    display: flex; align-items: center; justify-content: center;
+    pointer-events: auto;
+    cursor: pointer;
+  }
+  .mute:active { background: rgba(255,255,255,.14); }
+</style>
+</head>
+<body>
+  <canvas id="game"></canvas>
+
+  <div class="hud">
+    <div id="score" class="score">0</div>
+    <div id="best" class="best">Best 0</div>
+    <div id="combo" class="combo">PERFECT ×2</div>
+  </div>
+
+  <button id="mute" class="mute" aria-label="Toggle sound">🔊</button>
+
+  <!-- Start screen -->
+  <div id="startScreen" class="screen">
+    <div class="logo">NEON<br />STACK<small>TAP · STACK · SURVIVE</small></div>
+    <div class="hint">Tap anywhere to drop the block.<br />Line it up perfectly for a combo.<br />How high can you go?</div>
+    <button id="startBtn" class="btn">TAP TO PLAY</button>
+  </div>
+
+  <!-- Game over screen -->
+  <div id="overScreen" class="screen hidden">
+    <div class="go-title">GAME OVER</div>
+    <div class="go-stats">
+      <div class="stat"><div id="finalScore" class="n">0</div><div class="l">Height</div></div>
+      <div class="stat"><div id="finalBest" class="n">0</div><div class="l">Best</div></div>
+    </div>
+    <div id="newBest" class="newbest" style="visibility:hidden">★ New Best! ★</div>
+    <button id="againBtn" class="btn">PLAY AGAIN</button>
+  </div>
+
+<script>
+(() => {
+  "use strict";
+
+  const canvas = document.getElementById("game");
+  const ctx = canvas.getContext("2d");
+
+  // ---- Responsive canvas (retina-aware) ----
+  let W = 0, H = 0, DPR = 1;
+  function resize() {
+    DPR = Math.min(window.devicePixelRatio || 1, 3);
+    W = window.innerWidth;
+    H = window.innerHeight;
+    canvas.width = Math.floor(W * DPR);
+    canvas.height = Math.floor(H * DPR);
+    canvas.style.width = W + "px";
+    canvas.style.height = H + "px";
+    ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  }
+  window.addEventListener("resize", resize);
+  resize();
+
+  // ---- Elements ----
+  const el = {
+    score: document.getElementById("score"),
+    best: document.getElementById("best"),
+    combo: document.getElementById("combo"),
+    start: document.getElementById("startScreen"),
+    over: document.getElementById("overScreen"),
+    startBtn: document.getElementById("startBtn"),
+    againBtn: document.getElementById("againBtn"),
+    finalScore: document.getElementById("finalScore"),
+    finalBest: document.getElementById("finalBest"),
+    newBest: document.getElementById("newBest"),
+    mute: document.getElementById("mute"),
+  };
+
+  // ---- Persistent best ----
+  const BEST_KEY = "neonstack_best";
+  let best = parseInt(localStorage.getItem(BEST_KEY) || "0", 10) || 0;
+  el.best.textContent = "Best " + best;
+
+  // ---- Sound (WebAudio synth, iOS-safe) ----
+  let audioCtx = null, muted = localStorage.getItem("neonstack_muted") === "1";
+  el.mute.textContent = muted ? "🔇" : "🔊";
+  function ensureAudio() {
+    if (!audioCtx) {
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if (AC) audioCtx = new AC();
+    }
+    if (audioCtx && audioCtx.state === "suspended") audioCtx.resume();
+  }
+  function blip(freq, dur = 0.09, type = "sine", vol = 0.16) {
+    if (muted || !audioCtx) return;
+    const t = audioCtx.currentTime;
+    const osc = audioCtx.createOscillator();
+    const g = audioCtx.createGain();
+    osc.type = type;
+    osc.frequency.setValueAtTime(freq, t);
+    g.gain.setValueAtTime(0, t);
+    g.gain.linearRampToValueAtTime(vol, t + 0.008);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    osc.connect(g).connect(audioCtx.destination);
+    osc.start(t);
+    osc.stop(t + dur + 0.02);
+  }
+  el.mute.addEventListener("click", (e) => {
+    e.stopPropagation();
+    muted = !muted;
+    localStorage.setItem("neonstack_muted", muted ? "1" : "0");
+    el.mute.textContent = muted ? "🔇" : "🔊";
+    if (!muted) { ensureAudio(); blip(660, 0.08, "triangle"); }
+  });
+
+  // ---- Game constants ----
+  const BLOCK_H = 46;            // logical height of a block
+  const START_W_FRAC = 0.62;     // starting block width as fraction of screen
+  const PERFECT_TOL = 4.5;       // px tolerance for a "perfect" drop
+  const REGROW = 8;              // px width regained on a perfect
+  const BASE_SPEED = 0.16;       // px per ms at start
+  const SPEED_STEP = 0.006;      // speed added per block
+  const MAX_SPEED = 0.55;
+
+  // ---- Game state ----
+  let state = "start";  // start | playing | over
+  let stack = [];       // placed blocks: {x, w, y, hue}
+  let debris = [];      // falling slices: {x,y,w,h,vx,vy,vr,rot,hue}
+  let particles = [];   // {x,y,vx,vy,life,max,hue,size}
+  let moving = null;    // current moving block {x, w, dir, speed, hue}
+  let score = 0, combo = 0;
+  let camY = 0, camTarget = 0;   // camera vertical offset (world scrolls down as tower grows)
+  let shake = 0;
+  let hueSeed = 200;
+
+  function screenBaseY() { return H - 90; } // y of the top surface of the base block, before camera
+
+  // Keep the active (top) block from climbing above ~32% of the screen: let the
+  // tower grow up into the empty space first, then start scrolling once it's tall.
+  function computeCamTarget() {
+    const activeWorldY = screenBaseY() - stack.length * BLOCK_H;
+    return Math.max(0, (H * 0.32) - activeWorldY);
+  }
+
+  function newHue() { hueSeed = (hueSeed + 24) % 360; return hueSeed; }
+
+  function reset() {
+    stack = []; debris = []; particles = [];
+    score = 0; combo = 0; camY = 0; camTarget = 0; shake = 0;
+    hueSeed = 195 + Math.floor(Math.random() * 40);
+    const w = Math.min(W * START_W_FRAC, 300);
+    const baseY = screenBaseY();
+    stack.push({ x: (W - w) / 2, w, y: baseY, hue: newHue() });
+    spawnMoving();
+    updateScoreUI();
+    hideCombo(true);
+  }
+
+  function spawnMoving() {
+    const top = stack[stack.length - 1];
+    const speed = Math.min(BASE_SPEED + stack.length * SPEED_STEP, MAX_SPEED);
+    const dir = Math.random() < 0.5 ? 1 : -1;
+    const startX = dir === 1 ? -top.w : W;
+    moving = { x: startX, w: top.w, y: top.y - BLOCK_H, dir, speed, hue: newHue() };
+  }
+
+  // ---- Input ----
+  function drop() {
+    if (state !== "playing" || !moving) return;
+    const top = stack[stack.length - 1];
+    const overlapL = Math.max(moving.x, top.x);
+    const overlapR = Math.min(moving.x + moving.w, top.x + top.w);
+    const overlap = overlapR - overlapL;
+
+    if (overlap <= 0) {
+      // total miss -> the block falls, game over
+      debris.push({
+        x: moving.x, y: moving.y, w: moving.w, h: BLOCK_H,
+        vx: moving.dir * 0.06, vy: -0.02, vr: (Math.random() - 0.5) * 0.01,
+        rot: 0, hue: moving.hue,
+      });
+      moving = null;
+      gameOver();
+      return;
+    }
+
+    const diff = Math.abs((moving.x) - top.x);
+    let placed;
+
+    if (diff <= PERFECT_TOL) {
+      // PERFECT: snap, regrow, combo
+      combo++;
+      const grow = Math.min(REGROW, START_W_FRAC * W - top.w);
+      const newW = top.w + Math.max(0, grow);
+      placed = { x: top.x - (newW - top.w) / 2, w: newW, y: moving.y, hue: moving.hue };
+      // clamp inside screen
+      placed.x = Math.max(0, Math.min(placed.x, W - placed.w));
+      score += 1 + combo;
+      burstPerfect(placed);
+      shake = Math.min(shake + 6, 14);
+      blip(520 + Math.min(combo, 12) * 40, 0.11, "triangle", 0.2);
+      showCombo(combo);
+    } else {
+      combo = 0;
+      hideCombo();
+      // slice off the overhang
+      placed = { x: overlapL, w: overlap, y: moving.y, hue: moving.hue };
+      // debris piece(s)
+      if (moving.x < top.x) {
+        const w = top.x - moving.x;
+        debris.push(mkDebris(moving.x, moving.y, w, moving.hue, -1));
+      }
+      if (moving.x + moving.w > top.x + top.w) {
+        const w = (moving.x + moving.w) - (top.x + top.w);
+        debris.push(mkDebris(top.x + top.w, moving.y, w, moving.hue, 1));
+      }
+      score += 1;
+      burstSlice(placed);
+      shake = Math.min(shake + 3, 9);
+      blip(300, 0.07, "sawtooth", 0.12);
+    }
+
+    stack.push(placed);
+    updateScoreUI();
+
+    // scroll camera so the tower stays framed
+    camTarget = computeCamTarget();
+
+    // check for lose-by-shrink
+    if (placed.w < 8) {
+      moving = null;
+      gameOver();
+      return;
+    }
+    spawnMoving();
+  }
+
+  function mkDebris(x, y, w, hue, side) {
+    return {
+      x, y, w, h: BLOCK_H,
+      vx: side * (0.05 + Math.random() * 0.05),
+      vy: -0.05 - Math.random() * 0.05,
+      vr: side * (0.004 + Math.random() * 0.006),
+      rot: 0, hue,
+    };
+  }
+
+  function burstSlice(b) {
+    const cx = b.x + b.w / 2, cy = b.y + BLOCK_H / 2;
+    for (let i = 0; i < 10; i++) {
+      particles.push({
+        x: cx, y: cy,
+        vx: (Math.random() - 0.5) * 0.35,
+        vy: (Math.random() - 0.7) * 0.35,
+        life: 0, max: 380 + Math.random() * 300,
+        hue: b.hue, size: 2 + Math.random() * 3,
+      });
+    }
+  }
+  function burstPerfect(b) {
+    const cy = b.y;
+    for (let i = 0; i < 26; i++) {
+      const a = Math.random() * Math.PI * 2;
+      const sp = 0.15 + Math.random() * 0.5;
+      particles.push({
+        x: b.x + Math.random() * b.w, y: cy,
+        vx: Math.cos(a) * sp, vy: Math.sin(a) * sp - 0.15,
+        life: 0, max: 500 + Math.random() * 400,
+        hue: (b.hue + Math.random() * 40) % 360, size: 2 + Math.random() * 4,
+      });
+    }
+  }
+
+  // ---- UI helpers ----
+  let comboTimer = 0;
+  function updateScoreUI() {
+    el.score.textContent = score;
+    el.score.classList.remove("pop");
+    // force reflow to restart animation
+    void el.score.offsetWidth;
+    el.score.classList.add("pop");
+  }
+  function showCombo(c) {
+    if (c < 2) return;
+    el.combo.textContent = "PERFECT ×" + c;
+    el.combo.classList.add("show");
+    comboTimer = 1200;
+  }
+  function hideCombo(instant) {
+    el.combo.classList.remove("show");
+    comboTimer = 0;
+  }
+
+  // ---- Flow ----
+  function startGame() {
+    ensureAudio();
+    reset();
+    state = "playing";
+    el.start.classList.add("hidden");
+    el.over.classList.add("hidden");
+    blip(440, 0.1, "triangle");
+  }
+  function gameOver() {
+    state = "over";
+    shake = 16;
+    blip(160, 0.35, "sawtooth", 0.18);
+    setTimeout(() => blip(110, 0.4, "sawtooth", 0.16), 90);
+    const isNew = score > best;
+    if (isNew) { best = score; localStorage.setItem(BEST_KEY, String(best)); }
+    el.best.textContent = "Best " + best;
+    el.finalScore.textContent = score;
+    el.finalBest.textContent = best;
+    el.newBest.style.visibility = isNew ? "visible" : "hidden";
+    // brief delay so the falling block is visible
+    setTimeout(() => el.over.classList.remove("hidden"), 550);
+  }
+
+  el.startBtn.addEventListener("click", (e) => { e.stopPropagation(); startGame(); });
+  el.againBtn.addEventListener("click", (e) => { e.stopPropagation(); startGame(); });
+
+  // global tap / key to drop
+  function onTap(e) {
+    if (state === "playing") { e.preventDefault(); drop(); }
+  }
+  window.addEventListener("pointerdown", onTap, { passive: false });
+  window.addEventListener("keydown", (e) => {
+    if (e.code === "Space" || e.code === "ArrowDown" || e.code === "Enter") {
+      e.preventDefault();
+      if (state === "playing") drop();
+      else if (state === "start") startGame();
+      else if (state === "over") startGame();
+    }
+  });
+
+  // ---- Rendering ----
+  function draw(dt) {
+    // camera easing
+    camY += (camTarget - camY) * Math.min(1, dt * 0.012);
+
+    // shake decay
+    shake *= Math.pow(0.9, dt / 16);
+    const sx = (Math.random() - 0.5) * shake;
+    const sy = (Math.random() - 0.5) * shake;
+
+    // background gradient (drifts with height)
+    const bg = ctx.createLinearGradient(0, 0, 0, H);
+    const t = Math.min(score / 60, 1);
+    bg.addColorStop(0, `hsl(${230 + t * 60}, 45%, ${8 + t * 4}%)`);
+    bg.addColorStop(1, `hsl(${255 + t * 40}, 55%, 5%)`);
+    ctx.fillStyle = bg;
+    ctx.fillRect(0, 0, W, H);
+
+    // subtle stars
+    drawStars();
+
+    ctx.save();
+    ctx.translate(sx, camY + sy);
+
+    // placed blocks
+    for (let i = 0; i < stack.length; i++) drawBlock(stack[i], false);
+
+    // moving block
+    if (moving) drawBlock(moving, true);
+
+    // debris
+    for (const d of debris) {
+      ctx.save();
+      ctx.translate(d.x + d.w / 2, d.y + d.h / 2);
+      ctx.rotate(d.rot);
+      drawBlockShape(-d.w / 2, -d.h / 2, d.w, d.h, d.hue, false);
+      ctx.restore();
+    }
+
+    ctx.restore();
+
+    // particles (screen-space but follow camera)
+    ctx.save();
+    ctx.translate(sx, camY + sy);
+    for (const p of particles) {
+      const a = 1 - p.life / p.max;
+      ctx.globalAlpha = Math.max(0, a);
+      ctx.fillStyle = `hsl(${p.hue}, 90%, 65%)`;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.size * (0.4 + a * 0.6), 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+    ctx.restore();
+  }
+
+  let stars = null;
+  function drawStars() {
+    if (!stars || stars._w !== W || stars._h !== H) {
+      stars = { _w: W, _h: H, pts: [] };
+      for (let i = 0; i < 60; i++) {
+        stars.pts.push({ x: Math.random() * W, y: Math.random() * H, r: Math.random() * 1.3 + 0.2, a: Math.random() * 0.5 + 0.15 });
+      }
+    }
+    for (const s of stars.pts) {
+      ctx.globalAlpha = s.a;
+      ctx.fillStyle = "#cfe0ff";
+      ctx.fillRect(s.x, s.y, s.r, s.r);
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  function drawBlock(b, isMoving) {
+    drawBlockShape(b.x, b.y, b.w, BLOCK_H, b.hue, isMoving);
+  }
+
+  function drawBlockShape(x, y, w, h, hue, glow) {
+    if (w <= 0.5 || h <= 0.5) return;
+    const r = 8;
+    const grad = ctx.createLinearGradient(x, y, x, y + h);
+    grad.addColorStop(0, `hsl(${hue}, 85%, 66%)`);
+    grad.addColorStop(1, `hsl(${hue}, 80%, 48%)`);
+    if (glow) {
+      ctx.shadowColor = `hsl(${hue}, 90%, 60%)`;
+      ctx.shadowBlur = 24;
+    }
+    ctx.fillStyle = grad;
+    roundRect(x, y, w, h, r);
+    ctx.fill();
+    ctx.shadowBlur = 0;
+    // top / side accents (only when the block is wide enough to inset)
+    if (w > 8) {
+      ctx.fillStyle = "rgba(255,255,255,0.22)";
+      roundRect(x + 3, y + 3, w - 6, h * 0.32, 5);
+      ctx.fill();
+      ctx.fillStyle = "rgba(0,0,0,0.16)";
+      roundRect(x + 3, y + h * 0.7, w - 6, h * 0.24, 5);
+      ctx.fill();
+    }
+  }
+
+  function roundRect(x, y, w, h, r) {
+    r = Math.max(0, Math.min(r, w / 2, h / 2));
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.arcTo(x + w, y, x + w, y + h, r);
+    ctx.arcTo(x + w, y + h, x, y + h, r);
+    ctx.arcTo(x, y + h, x, y, r);
+    ctx.arcTo(x, y, x + w, y, r);
+    ctx.closePath();
+  }
+
+  // ---- Update ----
+  function update(dt) {
+    if (state === "playing" && moving) {
+      moving.x += moving.dir * moving.speed * dt;
+      const top = stack[stack.length - 1];
+      // bounce within a generous range around the tower
+      const leftBound = -moving.w * 0.6;
+      const rightBound = W + moving.w * 0.6 - moving.w;
+      if (moving.dir === 1 && moving.x > Math.min(rightBound, W - moving.w + moving.w * 0.6)) {
+        moving.x = Math.min(rightBound, W - moving.w + moving.w * 0.6);
+        moving.dir = -1;
+      } else if (moving.dir === -1 && moving.x < leftBound) {
+        moving.x = leftBound;
+        moving.dir = 1;
+      }
+    }
+
+    // debris physics
+    for (const d of debris) {
+      d.vy += 0.0016 * dt;   // gravity
+      d.x += d.vx * dt;
+      d.y += d.vy * dt;
+      d.rot += d.vr * dt;
+    }
+    // remove debris that fell far below view
+    const cull = (H - camY) + 400;
+    debris = debris.filter((d) => d.y < cull);
+
+    // particles
+    for (const p of particles) {
+      p.vy += 0.0009 * dt;
+      p.x += p.vx * dt;
+      p.y += p.vy * dt;
+      p.life += dt;
+    }
+    particles = particles.filter((p) => p.life < p.max);
+
+    // combo label auto-hide
+    if (comboTimer > 0) {
+      comboTimer -= dt;
+      if (comboTimer <= 0) hideCombo();
+    }
+  }
+
+  // ---- Main loop ----
+  let last = performance.now();
+  function frame(now) {
+    let dt = now - last;
+    last = now;
+    if (dt > 50) dt = 50; // clamp big gaps (tab switch)
+    update(dt);
+    draw(dt);
+    requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
+
+  // draw an idle demo tower on the start screen
+  reset();
+  state = "start";
+
+  // Read-only accessors used by the automated gameplay test in /scripts.
+  window.NEONSTACK = {
+    get state() { return state; },
+    get score() { return score; },
+    get height() { return stack.length; },
+    // signed distance of the moving block from perfect alignment, in px (0 = perfect)
+    offset() {
+      if (!moving || !stack.length) return Infinity;
+      return moving.x - stack[stack.length - 1].x;
+    },
+  };
+
+  // Register service worker for offline / installable app
+  if ("serviceWorker" in navigator) {
+    window.addEventListener("load", () => {
+      navigator.serviceWorker.register("sw.js").catch(() => {});
+    });
+  }
+})();
+</script>
+</body>
+</html>
