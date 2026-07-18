@@ -60,9 +60,17 @@ Base URL: `https://timesheets-dev.lkgeorge.org/api/v1` (dev) /
 | Sign & submit | `POST /timesheet/{id}/submit` |
 
 Times are `"HH:MM"` 24-hour (`""` clears a field); dates `"YYYY-MM-DD"`;
-timezone US Eastern. Submit respects `submitBlockedUntil` (the button is
-disabled and shows when it unlocks) and surfaces the server's `error` message on
-a 409.
+timezone US Eastern. Notes:
+
+- `GET /periods` returns `{ "periods": [...] }`; period ids are integers.
+- Editing sends the **whole day** in one `PUT`, so the server can reconcile
+  worked time and time off together. A full-day off (`offReason` + `offPortion:"full"`)
+  clears the times; a half day (`am`/`pm`) keeps the worked half.
+- `submitBlockedUntil` is a human-readable string (e.g. `"Fri Jul 17 at 3:30 PM"`),
+  not a timestamp — the app shows it verbatim and disables Submit until the
+  server returns `null`.
+- Locked/early-submit attempts (HTTP 409/422) surface the server's `error`
+  message inline.
 
 ## Project layout
 
@@ -72,7 +80,7 @@ Sources/TimesheetMenuBar/
   Config.swift           Dev/prod base URLs, Keychain + defaults keys
   Keychain.swift         Per-environment token storage (Security framework)
   APIClient.swift        Async URLSession client, bearer auth, error mapping
-  Models.swift           Codable models for every endpoint  ← see RECONCILE-ME
+  Models.swift           Codable models for every endpoint (matches API.md)
   AppState.swift         @MainActor view model; owns all API traffic
   Formatting.swift       Date/time parsing + "HH:MM" validation/normalisation
   Views/
@@ -82,23 +90,15 @@ Sources/TimesheetMenuBar/
     DayEditView.swift     Single-day editor (worked / time-off)
 ```
 
-## ⚠️ One thing to verify: the JSON field names
+## Schema
 
-These models were written from the **endpoint summary**, not the full
-field-level reference in `timesheets-dev/API.md` (a separate repo this app's
-author didn't have on hand). The field names that appear directly in the summary
-— ids, dates, the `PUT` payload keys, `status`, `editable`, `isCurrent`,
-`submitBlockedUntil`, `dayTypes` — should be correct.
+The Codable models in `Models.swift` match the field-level reference in
+`timesheets-dev/API.md`: `Me`, `Period` (+ the wrapping `PeriodsResponse`),
+`PeriodInfo`, `HourTotals` (used for both per-day `hours` and period `totals`),
+`DayType` (`slug`/`label`), `OffPortionOption` (`value`/`label`), `Day`, and
+`Timesheet`. `dayTypes` and `offPortions` are driven entirely by what the server
+returns, so new time-off types or portions appear in the pickers automatically —
+nothing is hard-coded.
 
-The **display-only** fields (per-day and per-period hour totals, a period label,
-weekday, the `offPortion` values) are best-guess names. They're all decoded
-**optionally**, so a wrong name just means that number doesn't render — it never
-crashes decoding. Each is marked with an `// inferred` comment or a
-`RECONCILE-ME` box in:
-
-- `Models.swift` — `Period.label/startDate/endDate`, `Day.hours/weekday`,
-  `Timesheet.periodHours/regularHours/overtimeHours/timeOffHours`.
-- `DayEditView.swift` — `OffPortion` raw values (`"full"` / `"half"`).
-
-Open `API.md`, confirm those names, and adjust in those two files if needed.
-Everything else should work as-is.
+Day decoding coerces any `null` string field to `""` defensively, so a sparsely
+populated day never breaks the editor.

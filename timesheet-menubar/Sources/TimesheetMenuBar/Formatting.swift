@@ -5,24 +5,6 @@ import Foundation
 enum DateParsing {
     static let eastern = TimeZone(identifier: "America/New_York") ?? .current
 
-    /// Parse a `submitBlockedUntil` value, which may be a date or a datetime.
-    static func parse(_ raw: String) -> Date? {
-        // Try ISO 8601 datetime first (with and without fractional seconds).
-        let iso = ISO8601DateFormatter()
-        iso.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        if let d = iso.date(from: raw) { return d }
-        iso.formatOptions = [.withInternetDateTime]
-        if let d = iso.date(from: raw) { return d }
-
-        // Fall back to a plain "YYYY-MM-DD" (interpreted at midnight Eastern).
-        let df = DateFormatter()
-        df.calendar = Calendar(identifier: .gregorian)
-        df.locale = Locale(identifier: "en_US_POSIX")
-        df.timeZone = eastern
-        df.dateFormat = "yyyy-MM-dd"
-        return df.date(from: raw)
-    }
-
     /// Turn "YYYY-MM-DD" into a display string like "Mon, Jul 6".
     static func displayDate(_ raw: String) -> String {
         let inFmt = DateFormatter()

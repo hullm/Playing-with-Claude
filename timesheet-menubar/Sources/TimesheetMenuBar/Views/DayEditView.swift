@@ -1,53 +1,62 @@
 import SwiftUI
 
-/// Editor for a single day. Sends a `PUT /timesheet/{id}/day` and adopts the
+/// Editor for a single day. Sends `PUT /timesheet/{id}/day` and adopts the
 /// refreshed card the server returns.
+///
+/// One unified form (not a mode toggle), because the API's model isn't
+/// exclusive: a half-day off (`am`/`pm`) records the *worked* half alongside the
+/// time-off reason, while a full-day off clears the times automatically.
 struct DayEditView: View {
     @EnvironmentObject private var state: AppState
     let day: Day
     let onDismiss: () -> Void
 
-    // Editable copies
-    @State private var regStart: String = ""
-    @State private var regEnd: String = ""
-    @State private var otStart: String = ""
-    @State private var otEnd: String = ""
-    @State private var note: String = ""
-    @State private var offReason: String = ""          // "" = none; else a DayType.value
-    @State private var offPortion: String = OffPortion.full.rawValue
-    @State private var mode: EntryMode = .worked
+    @State private var regStart = ""
+    @State private var regEnd = ""
+    @State private var otStart = ""
+    @State private var otEnd = ""
+    @State private var note = ""
+    @State private var offReason = ""     // "" = none, else a DayType.slug
+    @State private var offPortion = "full"
     @State private var saving = false
 
-    // ┌── RECONCILE-ME ────────────────────────────────────────────────────────┐
-    // │ `offPortion` values below are inferred. If API.md specifies different    │
-    // │ strings (e.g. "1", "0.5"), change the rawValues here only.               │
-    // └──────────────────────────────────────────────────────────────────────────┘
-    enum OffPortion: String, CaseIterable, Identifiable {
-        case full, half
-        var id: String { rawValue }
-        var label: String { self == .full ? "Full day" : "Half day" }
-    }
-
-    enum EntryMode: String, CaseIterable, Identifiable {
-        case worked, timeOff
-        var id: String { rawValue }
-        var label: String { self == .worked ? "Worked" : "Time off" }
-    }
+    private var dayTypes: [DayType] { state.timesheet?.dayTypes ?? [] }
+    private var offPortions: [OffPortionOption] { state.timesheet?.offPortions ?? [] }
+    private var isFullDayOff: Bool { !offReason.isEmpty && offPortion == "full" }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             header
 
-            Picker("", selection: $mode) {
-                ForEach(EntryMode.allCases) { Text($0.label).tag($0) }
+            // Worked time
+            VStack(alignment: .leading, spacing: 8) {
+                TimeRange(title: "Regular", start: $regStart, end: $regEnd)
+                    .disabled(isFullDayOff)
+                TimeRange(title: "Overtime", start: $otStart, end: $otEnd)
+                    .disabled(isFullDayOff)
+                Text(isFullDayOff
+                     ? "A full-day off clears worked times automatically."
+                     : "24-hour time, e.g. 09:00. Leave blank to clear.")
+                    .font(.caption2).foregroundStyle(.secondary)
             }
-            .pickerStyle(.segmented)
-            .labelsHidden()
+            .opacity(isFullDayOff ? 0.5 : 1)
 
-            if mode == .worked {
-                workedFields
-            } else {
-                timeOffFields
+            Divider()
+
+            // Time off
+            VStack(alignment: .leading, spacing: 8) {
+                Picker("Time off", selection: $offReason) {
+                    Text("None").tag("")
+                    ForEach(dayTypes) { type in
+                        Text(type.label).tag(type.slug)
+                    }
+                }
+                if !offReason.isEmpty && !offPortions.isEmpty {
+                    Picker("Amount", selection: $offPortion) {
+                        ForEach(offPortions) { p in Text(p.label).tag(p.value) }
+                    }
+                    .pickerStyle(.segmented)
+                }
             }
 
             noteField
@@ -78,37 +87,14 @@ struct DayEditView: View {
 
     private var header: some View {
         HStack {
-            Button(action: onDismiss) {
-                Image(systemName: "chevron.left")
-            }
-            .buttonStyle(.borderless)
+            Button(action: onDismiss) { Image(systemName: "chevron.left") }
+                .buttonStyle(.borderless)
             Text(DateParsing.displayDate(day.date))
                 .font(.headline)
+            if day.isWeekend {
+                Text("weekend").font(.caption2).foregroundStyle(.secondary)
+            }
             Spacer()
-        }
-    }
-
-    private var workedFields: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            TimeRange(title: "Regular", start: $regStart, end: $regEnd)
-            TimeRange(title: "Overtime", start: $otStart, end: $otEnd)
-            Text("24-hour time, e.g. 09:00. Leave blank to clear.")
-                .font(.caption2).foregroundStyle(.secondary)
-        }
-    }
-
-    private var timeOffFields: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Picker("Reason", selection: $offReason) {
-                Text("Select…").tag("")
-                ForEach(state.timesheet?.dayTypes ?? []) { type in
-                    Text(type.label).tag(type.value)
-                }
-            }
-            Picker("Amount", selection: $offPortion) {
-                ForEach(OffPortion.allCases) { Text($0.label).tag($0.rawValue) }
-            }
-            .pickerStyle(.segmented)
         }
     }
 
@@ -124,22 +110,21 @@ struct DayEditView: View {
     // MARK: - Logic
 
     private var isValid: Bool {
-        if mode == .worked {
-            return [regStart, regEnd, otStart, otEnd].allSatisfy(TimeString.isValid)
-        } else {
-            return !offReason.isEmpty
-        }
+        // Times must be valid or blank, and paired (both or neither).
+        let times = [regStart, regEnd, otStart, otEnd].allSatisfy(TimeString.isValid)
+        let regPaired = regStart.isEmpty == regEnd.isEmpty
+        let otPaired = otStart.isEmpty == otEnd.isEmpty
+        return times && regPaired && otPaired
     }
 
     private func loadFromDay() {
         regStart = day.regStart
         regEnd = day.regEnd
-        otStart = day.otStart ?? ""
-        otEnd = day.otEnd ?? ""
-        note = day.note ?? ""
-        offReason = day.offReason ?? ""
-        offPortion = day.offPortion ?? OffPortion.full.rawValue
-        mode = day.isTimeOff ? .timeOff : .worked
+        otStart = day.otStart
+        otEnd = day.otEnd
+        note = day.note
+        offReason = day.offReason
+        offPortion = day.offPortion.isEmpty ? (offPortions.first?.value ?? "full") : day.offPortion
         state.errorMessage = nil
     }
 
@@ -147,41 +132,24 @@ struct DayEditView: View {
         guard !saving else { return }
         saving = true
 
-        let update: DayUpdate
-        if mode == .worked {
-            update = DayUpdate(
-                date: day.date,
-                regStart: TimeString.normalized(regStart),
-                regEnd: TimeString.normalized(regEnd),
-                otStart: emptyToNil(TimeString.normalized(otStart)),
-                otEnd: emptyToNil(TimeString.normalized(otEnd)),
-                offReason: "",          // clear any prior time-off
-                offPortion: nil,
-                note: emptyToNil(note)
-            )
-        } else {
-            update = DayUpdate(
-                date: day.date,
-                regStart: "",            // clear work times when taking time off
-                regEnd: "",
-                otStart: nil,
-                otEnd: nil,
-                offReason: offReason,
-                offPortion: offPortion,
-                note: emptyToNil(note)
-            )
-        }
+        let fullDayOff = !offReason.isEmpty && offPortion == "full"
+        let update = DayUpdate(
+            date: day.date,
+            // A full-day off clears worked times; otherwise send what's entered.
+            regStart: fullDayOff ? "" : TimeString.normalized(regStart),
+            regEnd: fullDayOff ? "" : TimeString.normalized(regEnd),
+            otStart: fullDayOff ? "" : TimeString.normalized(otStart),
+            otEnd: fullDayOff ? "" : TimeString.normalized(otEnd),
+            offReason: offReason,
+            offPortion: offReason.isEmpty ? "" : offPortion,
+            note: note.trimmingCharacters(in: .whitespacesAndNewlines)
+        )
 
         Task {
             let ok = await state.saveDay(update)
             saving = false
             if ok { onDismiss() }
         }
-    }
-
-    private func emptyToNil(_ s: String) -> String? {
-        let t = s.trimmingCharacters(in: .whitespacesAndNewlines)
-        return t.isEmpty ? nil : t
     }
 }
 

@@ -40,23 +40,24 @@ struct APIClient {
     }
 
     func periods() async throws -> [Period] {
-        try await get("periods")
+        let response: PeriodsResponse = try await get("periods")
+        return response.periods
     }
 
-    func timesheet(id: String) async throws -> Timesheet {
-        try await get("timesheet/\(id)")
+    func timesheet(periodID: Int) async throws -> Timesheet {
+        try await get("timesheet/\(periodID)")
     }
 
     /// PUT a single day's edits; returns the refreshed card.
-    func updateDay(timesheetID: String, update: DayUpdate) async throws -> Timesheet {
-        try await send("timesheet/\(timesheetID)/day", method: "PUT", body: update)
+    func updateDay(periodID: Int, update: DayUpdate) async throws -> Timesheet {
+        try await send("timesheet/\(periodID)/day", method: "PUT", body: update)
     }
 
     /// Sign & submit. Returns the refreshed timesheet on success; throws
     /// `.conflict` with the server's message on 409.
     @discardableResult
-    func submit(timesheetID: String) async throws -> Timesheet {
-        try await send("timesheet/\(timesheetID)/submit", method: "POST", body: EmptyBody())
+    func submit(periodID: Int) async throws -> Timesheet {
+        try await send("timesheet/\(periodID)/submit", method: "POST", body: EmptyBody())
     }
 
     // MARK: Plumbing
@@ -107,9 +108,10 @@ struct APIClient {
             }
         case 401:
             throw APIError.unauthorized
-        case 409:
+        case 409, 422:
+            // Locked sheet or no-early-submit rule; the server explains why.
             throw APIError.conflict(serverMessage(from: data)
-                ?? "This timesheet can't be submitted yet.")
+                ?? "This timesheet can't be edited or submitted right now.")
         default:
             throw APIError.http(status: http.statusCode, message: serverMessage(from: data))
         }

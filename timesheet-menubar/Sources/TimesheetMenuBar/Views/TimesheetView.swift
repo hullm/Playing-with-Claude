@@ -22,11 +22,11 @@ struct TimesheetView: View {
         VStack(alignment: .leading, spacing: 0) {
             if let me = state.me {
                 HStack {
-                    Text("Hi, \(me.name.split(separator: " ").first.map(String.init) ?? me.name)")
+                    Text("Hi, \(me.firstName)")
                         .font(.subheadline.weight(.semibold))
                     Spacer()
                     if !me.fillsTimecard {
-                        Text("Not required to fill a timecard")
+                        Text("No timecard required")
                             .font(.caption2)
                             .foregroundStyle(.secondary)
                     }
@@ -46,7 +46,7 @@ struct TimesheetView: View {
             } else if let ts = state.timesheet {
                 daysList(ts)
                 Divider()
-                TotalsBar(timesheet: ts)
+                TotalsBar(totals: ts.totals)
                 submitSection(ts)
             } else if !state.isLoading {
                 Text("No timesheet available for this period.")
@@ -60,14 +60,12 @@ struct TimesheetView: View {
     private var periodPicker: some View {
         HStack {
             Picker("Period", selection: Binding(
-                get: { state.timesheet?.id ?? state.currentPeriod?.id ?? "" },
+                get: { state.timesheet?.id ?? state.currentPeriod?.id ?? -1 },
                 set: { newID in Task { await state.loadTimesheet(periodID: newID) } }
             )) {
                 ForEach(state.periods) { period in
-                    HStack {
-                        Text(period.displayTitle)
-                        if period.isCurrent { Text("• current") }
-                    }.tag(period.id)
+                    Text(period.isCurrent ? "\(period.label) • current" : period.label)
+                        .tag(period.id)
                 }
             }
             .labelsHidden()
@@ -97,11 +95,12 @@ struct TimesheetView: View {
 
     private func submitSection(_ ts: Timesheet) -> some View {
         VStack(spacing: 6) {
-            if let blocked = state.submitBlockedUntilDate, blocked > Date() {
-                Label("Submit unlocks \(DateParsing.relativeTime(blocked))",
-                      systemImage: "lock.fill")
+            if let blocked = state.submitBlockedMessage {
+                Label(blocked, systemImage: "lock.fill")
                     .font(.caption)
                     .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, alignment: .leading)
             }
             if let outcome = submitResult {
                 Text(outcome.message)
@@ -115,13 +114,13 @@ struct TimesheetView: View {
             } label: {
                 HStack {
                     if state.isLoading { ProgressView().controlSize(.small) }
-                    Text(ts.status.lowercased() == "submitted" ? "Submitted" : "Sign & Submit")
+                    Text(isSubmitted(ts) ? "Submitted ✓" : "Sign & Submit")
                         .frame(maxWidth: .infinity)
                 }
             }
             .controlSize(.large)
             .buttonStyle(.borderedProminent)
-            .disabled(!state.canSubmit || state.isLoading || ts.status.lowercased() == "submitted")
+            .disabled(!state.canSubmit || state.isLoading)
         }
         .padding(12)
     }
@@ -136,13 +135,17 @@ struct TimesheetView: View {
         }
     }
 
+    private func isSubmitted(_ ts: Timesheet) -> Bool {
+        ["submitted", "approved", "accepted"].contains(ts.status.lowercased())
+    }
+
     private func submit() {
         submitResult = nil
         Task {
             if let blocking = await state.submit() {
                 submitResult = SubmitOutcome(message: blocking, isSuccess: false)
             } else {
-                submitResult = SubmitOutcome(message: "Submitted. Thanks!", isSuccess: true)
+                submitResult = SubmitOutcome(message: "Signed & submitted. Your approver has been emailed.", isSuccess: true)
             }
         }
     }
@@ -163,13 +166,14 @@ private struct DayRow: View {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(DateParsing.displayDate(day.date))
                         .font(.callout.weight(.medium))
+                        .foregroundStyle(day.isWeekend ? .secondary : .primary)
                     summaryLine
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
                 Spacer()
-                if let hours = day.hours, hours > 0 {
-                    Text("\(hours.hoursLabel)h")
+                if day.hours.total > 0 {
+                    Text("\(day.hours.total.hoursLabel)h")
                         .font(.callout.monospacedDigit())
                         .foregroundStyle(.secondary)
                 }
@@ -189,48 +193,57 @@ private struct DayRow: View {
 
     @ViewBuilder private var summaryLine: some View {
         if day.isTimeOff {
-            Text("Time off — \(day.offReason ?? "")\(day.offPortion.map { " (\($0))" } ?? "")")
+            Text(timeOffSummary)
         } else if day.hasWorkTime {
             Text(workSummary)
+        } else if day.isWeekend {
+            Text("Weekend")
         } else {
             Text("—")
         }
     }
 
+    private var timeOffSummary: String {
+        let portion = day.offPortion.isEmpty || day.offPortion == "full" ? "" : " (\(day.offPortion.uppercased()))"
+        return "Time off — \(day.offReason)\(portion)"
+    }
+
     private var workSummary: String {
         var parts: [String] = []
         if !day.regStart.isEmpty || !day.regEnd.isEmpty {
-            parts.append("\(day.regStart.isEmpty ? "?" : day.regStart)–\(day.regEnd.isEmpty ? "?" : day.regEnd)")
+            parts.append("\(orQuestion(day.regStart))–\(orQuestion(day.regEnd))")
         }
-        if let s = day.otStart, let e = day.otEnd, !(s.isEmpty && e.isEmpty) {
-            parts.append("OT \(s)–\(e)")
+        if !day.otStart.isEmpty || !day.otEnd.isEmpty {
+            parts.append("OT \(orQuestion(day.otStart))–\(orQuestion(day.otEnd))")
         }
         return parts.joined(separator: "  ")
     }
+
+    private func orQuestion(_ s: String) -> String { s.isEmpty ? "?" : s }
 }
 
 // MARK: - Small components
 
 private struct TotalsBar: View {
-    let timesheet: Timesheet
+    let totals: HourTotals
     var body: some View {
-        HStack(spacing: 14) {
-            total("Total", timesheet.periodHours)
-            total("Reg", timesheet.regularHours)
-            total("OT", timesheet.overtimeHours)
-            total("Off", timesheet.timeOffHours)
+        HStack(spacing: 16) {
+            total("Total", totals.total, emphasised: true)
+            total("Reg", totals.reg)
+            total("OT", totals.ot)
+            total("Off", totals.off)
             Spacer()
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
     }
 
-    @ViewBuilder private func total(_ label: String, _ value: Double?) -> some View {
-        if let value {
-            VStack(alignment: .leading, spacing: 1) {
-                Text(label).font(.caption2).foregroundStyle(.secondary)
-                Text("\(value.hoursLabel)h").font(.callout.monospacedDigit().weight(.semibold))
-            }
+    private func total(_ label: String, _ value: Double, emphasised: Bool = false) -> some View {
+        VStack(alignment: .leading, spacing: 1) {
+            Text(label).font(.caption2).foregroundStyle(.secondary)
+            Text("\(value.hoursLabel)h")
+                .font(.callout.monospacedDigit().weight(emphasised ? .bold : .semibold))
+                .foregroundStyle(emphasised ? .primary : .secondary)
         }
     }
 }
@@ -239,7 +252,7 @@ private struct StatusPill: View {
     let status: String
     let editable: Bool
     var body: some View {
-        Text(status.capitalized)
+        Text(prettyStatus)
             .font(.caption2.weight(.semibold))
             .padding(.horizontal, 7)
             .padding(.vertical, 2)
@@ -247,11 +260,15 @@ private struct StatusPill: View {
             .foregroundStyle(color)
             .clipShape(Capsule())
     }
+    private var prettyStatus: String {
+        status.replacingOccurrences(of: "-", with: " ").capitalized
+    }
     private var color: Color {
         switch status.lowercased() {
-        case "submitted", "approved", "signed": return .green
-        case "open", "draft", "in_progress": return editable ? .blue : .secondary
-        case "locked", "closed": return .secondary
+        case "submitted", "approved", "accepted": return .green
+        case "rejected": return .red
+        case "draft": return editable ? .blue : .secondary
+        case "not-started": return .secondary
         default: return .secondary
         }
     }

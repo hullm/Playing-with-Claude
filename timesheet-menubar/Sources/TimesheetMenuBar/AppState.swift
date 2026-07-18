@@ -100,7 +100,7 @@ final class AppState: ObservableObject {
             self.periods = periods
 
             if let current = periods.first(where: { $0.isCurrent }) ?? periods.first {
-                self.timesheet = try await client.timesheet(id: current.id)
+                self.timesheet = try await client.timesheet(periodID: current.id)
             } else {
                 self.timesheet = nil
             }
@@ -111,13 +111,13 @@ final class AppState: ObservableObject {
     }
 
     /// Load a specific period's timesheet (e.g. user picked a different one).
-    func loadTimesheet(periodID: String) async {
+    func loadTimesheet(periodID: Int) async {
         guard let client = makeClient() else { return }
         isLoading = true
         errorMessage = nil
         defer { isLoading = false }
         do {
-            self.timesheet = try await client.timesheet(id: periodID)
+            self.timesheet = try await client.timesheet(periodID: periodID)
             self.lastRefreshed = Date()
         } catch {
             handle(error)
@@ -133,7 +133,7 @@ final class AppState: ObservableObject {
         errorMessage = nil
         defer { isLoading = false }
         do {
-            self.timesheet = try await client.updateDay(timesheetID: ts.id, update: update)
+            self.timesheet = try await client.updateDay(periodID: ts.id, update: update)
             self.lastRefreshed = Date()
             return true
         } catch {
@@ -150,7 +150,7 @@ final class AppState: ObservableObject {
         errorMessage = nil
         defer { isLoading = false }
         do {
-            self.timesheet = try await client.submit(timesheetID: ts.id)
+            self.timesheet = try await client.submit(periodID: ts.id)
             self.lastRefreshed = Date()
             return nil
         } catch APIError.conflict(let message) {
@@ -196,15 +196,15 @@ final class AppState: ObservableObject {
         periods.first(where: { $0.isCurrent }) ?? periods.first
     }
 
-    /// Parsed `submitBlockedUntil`, if the server gave one and it's in the future.
-    var submitBlockedUntilDate: Date? {
+    /// Human-readable "you can submit after…" message, or nil if submittable now.
+    var submitBlockedMessage: String? {
         guard let raw = timesheet?.submitBlockedUntil, !raw.isEmpty else { return nil }
-        return DateParsing.parse(raw)
+        return raw
     }
 
     var canSubmit: Bool {
         guard let ts = timesheet, ts.editable else { return false }
-        if let blocked = submitBlockedUntilDate, blocked > Date() { return false }
-        return true
+        if ts.status.lowercased() == "submitted" { return false }
+        return submitBlockedMessage == nil
     }
 }
