@@ -78,6 +78,11 @@ struct TimesheetView: View {
         .padding(.vertical, 8)
     }
 
+    // Approximate rendered height of one DayRow (content + padding + divider).
+    private let rowHeight: CGFloat = 47
+    // Never grow the list past this; scroll beyond it.
+    private let maxListHeight: CGFloat = 470
+
     private func daysList(_ ts: Timesheet) -> some View {
         ScrollView {
             VStack(spacing: 0) {
@@ -90,7 +95,9 @@ struct TimesheetView: View {
                 }
             }
         }
-        .frame(maxHeight: 320)
+        // A ScrollView has no intrinsic height, so give it a definite one:
+        // fit the days exactly for short lists, cap + scroll for the full 14.
+        .frame(height: min(CGFloat(ts.days.count) * rowHeight, maxListHeight))
     }
 
     private func submitSection(_ ts: Timesheet) -> some View {
