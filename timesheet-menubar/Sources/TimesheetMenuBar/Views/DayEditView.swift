@@ -175,7 +175,7 @@ private struct TimeRange: View {
             .textFieldStyle(.roundedBorder)
             .frame(width: 74)
             .monospacedDigit()
-            .foregroundStyle(TimeString.isValid(binding.wrappedValue) ? .primary : .red)
+            .foregroundStyle(TimeString.isValid(binding.wrappedValue) ? Color.primary : Color.red)
             .onSubmit { binding.wrappedValue = TimeString.normalized(binding.wrappedValue) }
     }
 }
