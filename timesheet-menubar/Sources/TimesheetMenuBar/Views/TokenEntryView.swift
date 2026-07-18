@@ -14,8 +14,13 @@ struct TokenEntryView: View {
                     .font(.callout)
                     .foregroundStyle(.orange)
             } else {
-                Text("Connect your account")
-                    .font(.headline)
+                HStack(spacing: 6) {
+                    Text("Connect your account")
+                        .font(.headline)
+                    Text("(\(state.environment.label))")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
             }
 
             Text("Generate a personal access token in the web app under **Settings → API access**, then paste it here. It's stored only in your macOS Keychain.")

@@ -1,5 +1,7 @@
 .build/
 dist/
+icon/AppIcon.icns
+icon/AppIcon.iconset/
 .swiftpm/
 *.xcodeproj
 DerivedData/

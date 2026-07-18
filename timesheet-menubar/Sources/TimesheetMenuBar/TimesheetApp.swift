@@ -12,11 +12,22 @@ struct TimesheetApp: App {
                 .environmentObject(state)
                 .frame(width: 340)
         } label: {
-            // SF Symbol shown in the menu bar. Falls back gracefully if the
-            // symbol is unavailable on very old systems.
-            Image(systemName: "clock.badge.checkmark")
+            MenuBarLabel(state: state)
         }
         .menuBarExtraStyle(.window) // rich SwiftUI content rather than a plain menu
+    }
+}
+
+/// The menu bar item: clock icon plus the current period's total hours.
+private struct MenuBarLabel: View {
+    @ObservedObject var state: AppState
+    var body: some View {
+        HStack(spacing: 3) {
+            Image(systemName: state.menuBarSymbol)
+            if let text = state.menuBarText {
+                Text(text)
+            }
+        }
     }
 }
 

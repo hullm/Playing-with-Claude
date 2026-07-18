@@ -77,6 +77,11 @@ private struct FooterBar: View {
             Spacer()
 
             Menu {
+                Toggle("Launch at login", isOn: Binding(
+                    get: { state.launchAtLogin },
+                    set: { state.setLaunchAtLogin($0) }
+                ))
+                Divider()
                 Picker("Server", selection: Binding(
                     get: { state.environment },
                     set: { state.environment = $0 }

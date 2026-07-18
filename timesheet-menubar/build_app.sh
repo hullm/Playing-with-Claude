@@ -33,6 +33,15 @@ mkdir -p "${APP_DIR}/Contents/Resources"
 cp "${BIN_PATH}" "${APP_DIR}/Contents/MacOS/${EXECUTABLE}"
 cp "Info.plist" "${APP_DIR}/Contents/Info.plist"
 
+# App icon: build the .icns from the PNG if needed, then bundle it.
+if [[ ! -f "icon/AppIcon.icns" && -f "icon/AppIcon.png" ]] && command -v iconutil >/dev/null 2>&1; then
+    echo "▸ Building app icon…"
+    ./make_icon.sh || echo "  (icon build failed; continuing without a custom icon)"
+fi
+if [[ -f "icon/AppIcon.icns" ]]; then
+    cp "icon/AppIcon.icns" "${APP_DIR}/Contents/Resources/AppIcon.icns"
+fi
+
 # Ad-hoc code signature so macOS will run it locally without Gatekeeper fuss.
 if command -v codesign >/dev/null 2>&1; then
     echo "▸ Ad-hoc signing…"

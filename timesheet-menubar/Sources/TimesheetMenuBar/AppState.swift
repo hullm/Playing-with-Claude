@@ -18,6 +18,7 @@ final class AppState: ObservableObject {
         }
     }
     @Published private(set) var hasToken: Bool
+    @Published var launchAtLogin: Bool
 
     // Loaded data
     @Published private(set) var me: Me?
@@ -36,6 +37,11 @@ final class AppState: ObservableObject {
         let env = raw.flatMap(ServerEnvironment.init(rawValue:)) ?? .dev
         self.environment = env
         self.hasToken = Keychain.token(for: env) != nil
+        self.launchAtLogin = LaunchAtLogin.isEnabled
+    }
+
+    func setLaunchAtLogin(_ enabled: Bool) {
+        launchAtLogin = LaunchAtLogin.set(enabled)
     }
 
     // MARK: - Token management
@@ -206,5 +212,25 @@ final class AppState: ObservableObject {
         guard let ts = timesheet, ts.editable else { return false }
         if ts.status.lowercased() == "submitted" { return false }
         return submitBlockedMessage == nil
+    }
+
+    /// True when the current period still needs attention (draft, editable, and
+    /// past its submit lock) — used to nudge via the menu bar icon.
+    var currentPeriodNeedsAction: Bool {
+        guard let ts = timesheet, ts.id == currentPeriod?.id,
+              ts.editable, ts.status.lowercased() == "draft" else { return false }
+        return submitBlockedMessage == nil
+    }
+
+    /// SF Symbol shown in the menu bar. Switches to a nudge when action's due.
+    var menuBarSymbol: String {
+        currentPeriodNeedsAction ? "clock.badge.exclamationmark" : "clock.badge.checkmark"
+    }
+
+    /// Compact hours label shown next to the menu bar icon for the *current*
+    /// period only (nil when browsing a different period or nothing's loaded).
+    var menuBarText: String? {
+        guard let ts = timesheet, ts.id == currentPeriod?.id else { return nil }
+        return "\(ts.totals.total.hoursLabel)h"
     }
 }

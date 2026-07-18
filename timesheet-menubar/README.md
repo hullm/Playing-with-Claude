@@ -13,6 +13,9 @@ app-switcher entry.
 - **Environments:** develops against the **dev** server by default
   (`timesheets-dev.lkgeorge.org`); flip to **prod** from the gear menu. Dev and
   prod tokens are stored separately.
+- **At-a-glance menu bar:** the icon shows the current period's total hours next
+  to it, and swaps to a nudge badge when a draft is ready to submit.
+- **Launch at login:** a toggle in the gear menu (via `SMAppService`).
 
 ## Requirements
 
@@ -79,6 +82,7 @@ Sources/TimesheetMenuBar/
   TimesheetApp.swift     App entry, MenuBarExtra scene, accessory-policy delegate
   Config.swift           Dev/prod base URLs, Keychain + defaults keys
   Keychain.swift         Per-environment token storage (Security framework)
+  LaunchAtLogin.swift    SMAppService wrapper for the login-item toggle
   APIClient.swift        Async URLSession client, bearer auth, error mapping
   Models.swift           Codable models for every endpoint (matches API.md)
   AppState.swift         @MainActor view model; owns all API traffic
@@ -88,6 +92,21 @@ Sources/TimesheetMenuBar/
     TokenEntryView.swift  Paste-token screen
     TimesheetView.swift   Period picker, day list, totals, submit
     DayEditView.swift     Single-day editor (worked / time-off)
+icon/
+  make_icon.py           Pure-Python generator → AppIcon.png (no deps)
+  AppIcon.png            1024×1024 source icon (committed)
+make_icon.sh             Mac-side: AppIcon.png → AppIcon.icns (sips + iconutil)
+```
+
+## App icon
+
+The icon lives in `icon/AppIcon.png` (already committed). `build_app.sh` turns it
+into `AppIcon.icns` and bundles it automatically on macOS. To tweak the artwork,
+edit `icon/make_icon.py`, then:
+
+```bash
+python3 icon/make_icon.py   # regenerate AppIcon.png
+./make_icon.sh              # rebuild AppIcon.icns (macOS)
 ```
 
 ## Schema
