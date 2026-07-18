@@ -13,8 +13,8 @@ app-switcher entry.
 - **Environments:** develops against the **dev** server by default
   (`timesheets-dev.lkgeorge.org`); flip to **prod** from the gear menu. Dev and
   prod tokens are stored separately.
-- **At-a-glance menu bar:** the icon shows the current period's total hours next
-  to it, and swaps to a nudge badge when a draft is ready to submit.
+- **At-a-glance menu bar:** the clock icon swaps to a nudge badge when a draft
+  is ready to submit.
 - **Launch at login:** a toggle in the gear menu (via `SMAppService`).
 
 ## Requirements

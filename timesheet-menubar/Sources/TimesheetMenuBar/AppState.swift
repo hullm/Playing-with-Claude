@@ -226,11 +226,4 @@ final class AppState: ObservableObject {
     var menuBarSymbol: String {
         currentPeriodNeedsAction ? "clock.badge.exclamationmark" : "clock.badge.checkmark"
     }
-
-    /// Compact hours label shown next to the menu bar icon for the *current*
-    /// period only (nil when browsing a different period or nothing's loaded).
-    var menuBarText: String? {
-        guard let ts = timesheet, ts.id == currentPeriod?.id else { return nil }
-        return "\(ts.totals.total.hoursLabel)h"
-    }
 }

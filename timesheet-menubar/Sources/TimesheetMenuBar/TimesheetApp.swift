@@ -18,16 +18,12 @@ struct TimesheetApp: App {
     }
 }
 
-/// The menu bar item: clock icon plus the current period's total hours.
+/// The menu bar item: just the clock icon (swaps to a nudge when a draft is
+/// ready to submit).
 private struct MenuBarLabel: View {
     @ObservedObject var state: AppState
     var body: some View {
-        HStack(spacing: 3) {
-            Image(systemName: state.menuBarSymbol)
-            if let text = state.menuBarText {
-                Text(text)
-            }
-        }
+        Image(systemName: state.menuBarSymbol)
     }
 }
 
