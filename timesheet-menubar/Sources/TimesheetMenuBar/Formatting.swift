@@ -28,56 +28,80 @@ enum DateParsing {
     }
 }
 
-/// Validation + light normalisation for "HH:MM" 24-hour time strings.
+/// Time handling. The API always uses 24-hour "HH:MM"; the UI shows and accepts
+/// 12-hour AM/PM. These helpers convert between the two.
+///
+/// Parsing is forgiving: "7:30 AM", "7:30am", "730a", "3pm" all work. Input with
+/// **no** AM/PM is read as 24-hour ("15:30", "1530", "0730") — so what you type
+/// is never ambiguous. Everything is displayed back as 12-hour after you commit.
 enum TimeString {
-    /// True if `s` is empty (meaning "clear") or a valid 24-hour "HH:MM".
+    /// True if `s` is empty (meaning "clear") or parses to a valid time.
     static func isValid(_ s: String) -> Bool {
-        let t = s.trimmingCharacters(in: .whitespaces)
-        if t.isEmpty { return true }
-        let parts = t.split(separator: ":", omittingEmptySubsequences: false)
-        guard parts.count == 2,
-              let h = Int(parts[0]), let m = Int(parts[1]),
-              parts[0].count == 2, parts[1].count == 2,
-              (0...23).contains(h), (0...59).contains(m) else {
-            return false
-        }
-        return true
+        parse24(s) != nil
     }
 
-    /// Normalise loose input ("9:5", "9.05", "930") toward "HH:MM" where possible.
-    /// Returns the input unchanged if it can't be confidently parsed.
-    static func normalized(_ s: String) -> String {
-        let t = s.trimmingCharacters(in: .whitespaces)
+    /// Parse flexible 12- or 24-hour input into canonical 24-hour "HH:MM".
+    /// Returns "" for empty input (a cleared field), or nil if unparseable.
+    static func parse24(_ s: String) -> String? {
+        var t = s.trimmingCharacters(in: .whitespaces).lowercased()
         if t.isEmpty { return "" }
 
-        // "HH:MM" style with 1–2 digit parts.
-        let sep = t.replacingOccurrences(of: ".", with: ":")
-        let parts = sep.split(separator: ":", omittingEmptySubsequences: false)
-        if parts.count == 2, let h = Int(parts[0]), let m = Int(parts[1]),
-           (0...23).contains(h), (0...59).contains(m) {
-            return String(format: "%02d:%02d", h, m)
+        // Pull off an AM/PM suffix if present.
+        var meridiem: Int? = nil            // 0 = AM, 1 = PM
+        if t.hasSuffix("am") { meridiem = 0; t.removeLast(2) }
+        else if t.hasSuffix("pm") { meridiem = 1; t.removeLast(2) }
+        else if t.hasSuffix("a") { meridiem = 0; t.removeLast() }
+        else if t.hasSuffix("p") { meridiem = 1; t.removeLast() }
+        t = t.trimmingCharacters(in: .whitespaces)
+            .replacingOccurrences(of: ".", with: ":")
+
+        var hour = 0
+        var minute = 0
+        if t.contains(":") {
+            let parts = t.split(separator: ":", omittingEmptySubsequences: false)
+            guard parts.count == 2, let h = Int(parts[0]), let m = Int(parts[1]) else { return nil }
+            hour = h; minute = m
+        } else if !t.isEmpty, t.allSatisfy(\.isNumber) {
+            switch t.count {
+            case 1, 2: hour = Int(t) ?? -1
+            case 3: hour = Int(t.prefix(1)) ?? -1; minute = Int(t.suffix(2)) ?? -1
+            case 4: hour = Int(t.prefix(2)) ?? -1; minute = Int(t.suffix(2)) ?? -1
+            default: return nil
+            }
+        } else {
+            return nil
         }
 
-        // Bare digits: "930" → 09:30, "9" → 09:00, "1430" → 14:30.
-        if t.allSatisfy(\.isNumber) {
-            switch t.count {
-            case 1, 2:
-                if let h = Int(t), (0...23).contains(h) { return String(format: "%02d:00", h) }
-            case 3:
-                let h = Int(t.prefix(1)); let m = Int(t.suffix(2))
-                if let h, let m, (0...23).contains(h), (0...59).contains(m) {
-                    return String(format: "%02d:%02d", h, m)
-                }
-            case 4:
-                let h = Int(t.prefix(2)); let m = Int(t.suffix(2))
-                if let h, let m, (0...23).contains(h), (0...59).contains(m) {
-                    return String(format: "%02d:%02d", h, m)
-                }
-            default:
-                break
-            }
+        guard (0...59).contains(minute) else { return nil }
+
+        if let mer = meridiem {
+            guard (1...12).contains(hour) else { return nil }
+            if mer == 1, hour != 12 { hour += 12 }   // PM
+            if mer == 0, hour == 12 { hour = 0 }     // 12 AM → 00
+        } else {
+            guard (0...23).contains(hour) else { return nil }
         }
-        return t
+        return String(format: "%02d:%02d", hour, minute)
+    }
+
+    /// Format a canonical 24-hour "HH:MM" as 12-hour "7:30 AM". Empty stays empty.
+    static func display12(_ hhmm24: String) -> String {
+        let t = hhmm24.trimmingCharacters(in: .whitespaces)
+        if t.isEmpty { return "" }
+        let parts = t.split(separator: ":")
+        guard parts.count == 2, let h = Int(parts[0]), let m = Int(parts[1]),
+              (0...23).contains(h), (0...59).contains(m) else { return hhmm24 }
+        let meridiem = h < 12 ? "AM" : "PM"
+        var h12 = h % 12
+        if h12 == 0 { h12 = 12 }
+        return String(format: "%d:%02d %@", h12, m, meridiem)
+    }
+
+    /// Re-format a field's text into canonical 12-hour display, leaving it
+    /// untouched if it can't be parsed (so the invalid state stays visible).
+    static func normalizedDisplay(_ s: String) -> String {
+        guard let canonical = parse24(s) else { return s }
+        return display12(canonical)
     }
 }
 

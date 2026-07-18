@@ -36,7 +36,7 @@ struct DayEditView: View {
                     .disabled(isFullDayOff)
                 Text(isFullDayOff
                      ? "A full-day off clears worked times automatically."
-                     : "24-hour time, e.g. 09:00. Leave blank to clear.")
+                     : "Enter times like 7:30 AM. Leave blank to clear.")
                     .font(.caption2).foregroundStyle(.secondary)
             }
             .opacity(isFullDayOff ? 0.5 : 1)
@@ -118,10 +118,10 @@ struct DayEditView: View {
     }
 
     private func loadFromDay() {
-        regStart = day.regStart
-        regEnd = day.regEnd
-        otStart = day.otStart
-        otEnd = day.otEnd
+        regStart = TimeString.display12(day.regStart)
+        regEnd = TimeString.display12(day.regEnd)
+        otStart = TimeString.display12(day.otStart)
+        otEnd = TimeString.display12(day.otEnd)
         note = day.note
         offReason = day.offReason
         offPortion = day.offPortion.isEmpty ? (offPortions.first?.value ?? "full") : day.offPortion
@@ -135,11 +135,12 @@ struct DayEditView: View {
         let fullDayOff = !offReason.isEmpty && offPortion == "full"
         let update = DayUpdate(
             date: day.date,
-            // A full-day off clears worked times; otherwise send what's entered.
-            regStart: fullDayOff ? "" : TimeString.normalized(regStart),
-            regEnd: fullDayOff ? "" : TimeString.normalized(regEnd),
-            otStart: fullDayOff ? "" : TimeString.normalized(otStart),
-            otEnd: fullDayOff ? "" : TimeString.normalized(otEnd),
+            // A full-day off clears worked times; otherwise send what's entered,
+            // converted from the 12-hour display back to the API's 24-hour "HH:MM".
+            regStart: fullDayOff ? "" : (TimeString.parse24(regStart) ?? ""),
+            regEnd: fullDayOff ? "" : (TimeString.parse24(regEnd) ?? ""),
+            otStart: fullDayOff ? "" : (TimeString.parse24(otStart) ?? ""),
+            otEnd: fullDayOff ? "" : (TimeString.parse24(otEnd) ?? ""),
             offReason: offReason,
             offPortion: offReason.isEmpty ? "" : offPortion,
             note: note.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -173,9 +174,8 @@ private struct TimeRange: View {
     private func field(_ binding: Binding<String>, placeholder: String) -> some View {
         TextField(placeholder, text: binding)
             .textFieldStyle(.roundedBorder)
-            .frame(width: 74)
-            .monospacedDigit()
+            .frame(width: 96)
             .foregroundStyle(TimeString.isValid(binding.wrappedValue) ? Color.primary : Color.red)
-            .onSubmit { binding.wrappedValue = TimeString.normalized(binding.wrappedValue) }
+            .onSubmit { binding.wrappedValue = TimeString.normalizedDisplay(binding.wrappedValue) }
     }
 }

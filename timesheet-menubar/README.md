@@ -65,6 +65,9 @@ Base URL: `https://timesheets-dev.lkgeorge.org/api/v1` (dev) /
 Times are `"HH:MM"` 24-hour (`""` clears a field); dates `"YYYY-MM-DD"`;
 timezone US Eastern. Notes:
 
+- The API uses 24-hour times, but the UI shows and accepts **12-hour AM/PM**
+  (e.g. `7:30 AM`); input is converted back to `"HH:MM"` before saving. Typing
+  a time with no AM/PM is read as 24-hour, so nothing is ambiguous.
 - `GET /periods` returns `{ "periods": [...] }`; period ids are integers.
 - Editing sends the **whole day** in one `PUT`, so the server can reconcile
   worked time and time off together. A full-day off (`offReason` + `offPortion:"full"`)

@@ -218,15 +218,17 @@ private struct DayRow: View {
     private var workSummary: String {
         var parts: [String] = []
         if !day.regStart.isEmpty || !day.regEnd.isEmpty {
-            parts.append("\(orQuestion(day.regStart))–\(orQuestion(day.regEnd))")
+            parts.append("\(display(day.regStart))–\(display(day.regEnd))")
         }
         if !day.otStart.isEmpty || !day.otEnd.isEmpty {
-            parts.append("OT \(orQuestion(day.otStart))–\(orQuestion(day.otEnd))")
+            parts.append("OT \(display(day.otStart))–\(display(day.otEnd))")
         }
         return parts.joined(separator: "  ")
     }
 
-    private func orQuestion(_ s: String) -> String { s.isEmpty ? "?" : s }
+    private func display(_ s: String) -> String {
+        s.isEmpty ? "?" : TimeString.display12(s)
+    }
 }
 
 // MARK: - Small components
