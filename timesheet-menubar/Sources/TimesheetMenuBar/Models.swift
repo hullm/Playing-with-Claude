@@ -139,6 +139,19 @@ struct Timesheet: Codable, Equatable {
     var isSubmitBlocked: Bool { (submitBlockedUntil?.isEmpty == false) }
 }
 
+// GET /me/defaults  and the response of  PUT /me/defaults
+struct WorkdayDefaults: Codable, Equatable {
+    let regStart: String            // "HH:MM" 24-hour
+    let regEnd: String
+    let fullDayHours: Double?        // read-only; may be absent on PUT responses
+}
+
+// PUT /me/defaults  request body
+struct DefaultsUpdate: Codable {
+    let regStart: String
+    let regEnd: String
+}
+
 // PUT /timesheet/{periodId}/day  request body.
 // All fields optional except `date`; "" clears. We send the full day so the
 // server can reconcile worked time and time off in one call.

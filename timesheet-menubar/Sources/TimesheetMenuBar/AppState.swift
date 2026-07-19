@@ -14,6 +14,8 @@ final class AppState: ObservableObject {
     @Published var launchAtLogin: Bool
     /// When true, force the connect screen so the user can edit the server/token.
     @Published var changingServer = false
+    /// When true, show the default-hours editor.
+    @Published var editingDefaults = false
 
     /// Show weekend rows in the day list (default off — empty weekends hide).
     @Published var showWeekends: Bool {
@@ -83,6 +85,52 @@ final class AppState: ObservableObject {
     func cancelChangingServer() {
         errorMessage = nil
         changingServer = false
+    }
+
+    // MARK: - Default hours
+
+    func beginEditingDefaults() {
+        errorMessage = nil
+        editingDefaults = true
+    }
+
+    func cancelEditingDefaults() {
+        errorMessage = nil
+        editingDefaults = false
+    }
+
+    /// Fetch the user's current default workday hours.
+    func loadDefaults() async -> WorkdayDefaults? {
+        guard let client = makeClient() else { return nil }
+        do {
+            return try await client.defaults()
+        } catch {
+            handle(error)
+            return nil
+        }
+    }
+
+    /// Save new default hours (24-hour "HH:MM"). Returns nil on success, or a
+    /// message to show on failure (e.g. a 422 validation error).
+    func saveDefaults(regStart: String, regEnd: String) async -> String? {
+        guard let client = makeClient() else { return "Not signed in." }
+        isLoading = true
+        errorMessage = nil
+        defer { isLoading = false }
+        do {
+            _ = try await client.updateDefaults(regStart: regStart, regEnd: regEnd)
+            editingDefaults = false
+            // Reflect the new defaults in the loaded card's blank (pre-fill) days.
+            if let ts = timesheet {
+                self.timesheet = try? await client.timesheet(periodID: ts.id)
+            }
+            return nil
+        } catch APIError.conflict(let message) {
+            return message   // 422 — invalid times / end not after start
+        } catch {
+            handle(error)
+            return (error as? APIError)?.errorDescription ?? error.localizedDescription
+        }
     }
 
     private func applyServerHost(_ rawHost: String) {

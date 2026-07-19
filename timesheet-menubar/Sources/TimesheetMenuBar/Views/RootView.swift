@@ -14,6 +14,8 @@ struct RootView: View {
             Group {
                 if !state.hasToken || state.needsReauth || state.changingServer {
                     TokenEntryView()
+                } else if state.editingDefaults {
+                    DefaultsEditView()
                 } else {
                     TimesheetView()
                 }
@@ -73,6 +75,10 @@ private struct FooterBar: View {
                     get: { state.launchAtLogin },
                     set: { state.setLaunchAtLogin($0) }
                 ))
+                if state.hasToken {
+                    Divider()
+                    Button("Default hours…") { state.beginEditingDefaults() }
+                }
                 Divider()
                 Section(state.serverHost) {
                     Button("Change server…") { state.beginChangingServer() }

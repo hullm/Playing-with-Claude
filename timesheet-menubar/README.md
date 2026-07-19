@@ -21,6 +21,8 @@ app-switcher entry.
   the most recent *completed* one; a "Show all timesheets" toggle (which notes
   how many are hidden) reveals the full history. The period you're viewing is
   always shown.
+- **Default hours:** a "Default hours…" gear-menu item edits your standard
+  workday start/end (`GET`/`PUT /me/defaults`), which pre-fill blank days.
 - **Launch at login:** a toggle in the gear menu (via `SMAppService`).
 
 ## Requirements

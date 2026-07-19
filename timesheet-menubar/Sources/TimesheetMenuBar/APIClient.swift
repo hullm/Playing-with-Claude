@@ -44,6 +44,16 @@ struct APIClient {
         return response.periods
     }
 
+    func defaults() async throws -> WorkdayDefaults {
+        try await get("me/defaults")
+    }
+
+    /// PUT the user's default workday hours; returns the saved defaults.
+    func updateDefaults(regStart: String, regEnd: String) async throws -> WorkdayDefaults {
+        try await send("me/defaults", method: "PUT",
+                       body: DefaultsUpdate(regStart: regStart, regEnd: regEnd))
+    }
+
     func timesheet(periodID: Int) async throws -> Timesheet {
         try await get("timesheet/\(periodID)")
     }
