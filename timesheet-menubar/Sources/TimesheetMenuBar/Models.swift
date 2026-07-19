@@ -28,7 +28,7 @@ struct Period: Codable, Identifiable, Equatable {
     let label: String
     let startsOn: String   // "YYYY-MM-DD"
     let endsOn: String     // "YYYY-MM-DD"
-    let status: String     // not-started · draft · submitted · approved · accepted · rejected
+    let status: String     // not-started · draft · in_progress · submitted · approved · accepted · rejected
     let isCurrent: Bool
 
     /// True when there's no sheet for this period yet.
