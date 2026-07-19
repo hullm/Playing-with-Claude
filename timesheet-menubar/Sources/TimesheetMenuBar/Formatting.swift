@@ -116,6 +116,16 @@ enum TimeString {
     }
 }
 
+/// User-facing wording for a timesheet/period status.
+enum StatusLabel {
+    static func text(_ status: String) -> String {
+        switch status.lowercased() {
+        case "accepted": return "Complete"
+        default: return status.replacingOccurrences(of: "-", with: " ").capitalized
+        }
+    }
+}
+
 extension Double {
     /// Compact hours label: 8.0 → "8", 7.5 → "7.5", 7.25 → "7.25".
     var hoursLabel: String {

@@ -64,7 +64,7 @@ struct TimesheetView: View {
                 set: { newID in Task { await state.loadTimesheet(periodID: newID) } }
             )) {
                 ForEach(state.periods) { period in
-                    Text(period.isCurrent ? "\(period.label) • current" : period.label)
+                    Text("\(period.label) • \(period.isCurrent ? "current" : StatusLabel.text(period.status).lowercased())")
                         .tag(period.id)
                 }
             }
@@ -299,7 +299,7 @@ private struct StatusPill: View {
             .clipShape(Capsule())
     }
     private var prettyStatus: String {
-        status.replacingOccurrences(of: "-", with: " ").capitalized
+        StatusLabel.text(status)
     }
     private var color: Color {
         switch status.lowercased() {
