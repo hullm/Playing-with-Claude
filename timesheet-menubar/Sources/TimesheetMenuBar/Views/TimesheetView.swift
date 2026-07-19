@@ -326,7 +326,7 @@ private struct StatusPill: View {
         switch StatusLabel.normalized(status) {
         case "not-started": return .secondary          // nothing yet — gray
         case "draft":       return editable ? .blue : .secondary
-        case "in-progress": return editable ? .teal : .secondary
+        case "in-progress": return editable ? .blue : .secondary
         case "submitted":   return .orange             // sent, awaiting review
         case "approved":    return .purple             // approved, awaiting acceptance
         case "accepted":    return .green              // Complete
