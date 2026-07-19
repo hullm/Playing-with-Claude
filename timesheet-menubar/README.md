@@ -49,6 +49,27 @@ add it under **System Settings → General → Login Items** to launch at login.
 3. If a token is ever rejected (HTTP 401), the app drops back to the paste
    screen automatically.
 
+## Keychain prompts — making "Always Allow" stick
+
+macOS asks for permission when an app reads a Keychain secret. The app now reads
+the token **at most once per launch** (it's cached in memory), so you'll see at
+most one prompt — click **Always Allow**, not just Allow.
+
+But there's a catch: `build_app.sh` falls back to an **ad-hoc** code signature,
+which changes on every build, so macOS can't remember "Always Allow" across
+launches and keeps re-asking. The fix is a **stable self-signed certificate**
+(free — no Apple Developer account needed). Create it once:
+
+1. Open **Keychain Access** → menu **Certificate Assistant → Create a
+   Certificate…**
+2. Name: **`Time Sheets Signing`**  ·  Identity Type: *Self Signed Root*  ·
+   Certificate Type: **Code Signing**. Click Create.
+3. Rebuild: `./build_app.sh`. It auto-detects that identity and signs with it.
+
+Now click **Always Allow** once more and it sticks for good. (Prefer a different
+identity? Export its name: `export TIMESHEETS_SIGN_ID="Your Identity"` before
+building.)
+
 ## How it maps to the API
 
 Base URL: `https://timesheets-dev.lkgeorge.org/api/v1` (dev) /

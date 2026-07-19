@@ -7,6 +7,16 @@ import Security
 /// (`AppConfig.keychainService`, `<environment>`), so switching between the dev
 /// and prod servers keeps their tokens separate.
 enum Keychain {
+    /// Existence check only — queries metadata, not the secret data, so it does
+    /// NOT trigger a Keychain access prompt. Use this instead of `token(for:)`
+    /// when you only need to know whether a token is stored.
+    static func hasToken(for environment: ServerEnvironment) -> Bool {
+        var query = baseQuery(for: environment)
+        query[kSecMatchLimit as String] = kSecMatchLimitOne
+        // No kSecReturnData → no decryption of the secret → no prompt.
+        return SecItemCopyMatching(query as CFDictionary, nil) == errSecSuccess
+    }
+
     static func token(for environment: ServerEnvironment) -> String? {
         var query: [String: Any] = baseQuery(for: environment)
         query[kSecReturnData as String] = true

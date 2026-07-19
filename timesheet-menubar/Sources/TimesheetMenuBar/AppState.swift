@@ -14,11 +14,15 @@ final class AppState: ObservableObject {
             UserDefaults.standard.set(environment.rawValue, forKey: AppConfig.environmentDefaultsKey)
             // Environment changed → drop loaded data and re-check for a token.
             resetLoadedState()
-            hasToken = Keychain.token(for: environment) != nil
+            hasToken = Keychain.hasToken(for: environment)
         }
     }
     @Published private(set) var hasToken: Bool
     @Published var launchAtLogin: Bool
+
+    /// In-memory copy of the token so we read the Keychain at most once per
+    /// launch (each read can trigger an OS access prompt for unsigned builds).
+    private var cachedToken: String?
 
     // Loaded data
     @Published private(set) var me: Me?
@@ -36,7 +40,7 @@ final class AppState: ObservableObject {
         let raw = UserDefaults.standard.string(forKey: AppConfig.environmentDefaultsKey)
         let env = raw.flatMap(ServerEnvironment.init(rawValue:)) ?? .dev
         self.environment = env
-        self.hasToken = Keychain.token(for: env) != nil
+        self.hasToken = Keychain.hasToken(for: env)
         self.launchAtLogin = LaunchAtLogin.isEnabled
     }
 
@@ -69,6 +73,7 @@ final class AppState: ObservableObject {
                 return false
             }
             self.me = me
+            self.cachedToken = token   // seed the cache so loads don't re-read
             self.hasToken = true
             self.needsReauth = false
             self.errorMessage = nil
@@ -85,6 +90,7 @@ final class AppState: ObservableObject {
 
     func signOut() {
         Keychain.deleteToken(for: environment)
+        cachedToken = nil
         hasToken = false
         resetLoadedState()
     }
@@ -170,16 +176,20 @@ final class AppState: ObservableObject {
     // MARK: - Helpers
 
     private func makeClient() -> APIClient? {
-        guard let token = Keychain.token(for: environment) else {
+        // Prefer the in-memory copy; only touch the Keychain (which may prompt)
+        // if we haven't read it yet this launch.
+        guard let token = cachedToken ?? Keychain.token(for: environment) else {
             hasToken = false
             needsReauth = true
             return nil
         }
+        cachedToken = token
         return APIClient(environment: environment, token: token)
     }
 
     private func handle(_ error: Error) {
         if case APIError.unauthorized = error {
+            cachedToken = nil   // stored token is bad; force a fresh read/paste
             needsReauth = true
             hasToken = false
             errorMessage = APIError.unauthorized.errorDescription
@@ -189,6 +199,7 @@ final class AppState: ObservableObject {
     }
 
     private func resetLoadedState() {
+        cachedToken = nil   // different environment → different token
         me = nil
         periods = []
         timesheet = nil

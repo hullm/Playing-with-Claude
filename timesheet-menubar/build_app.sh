@@ -42,11 +42,29 @@ if [[ -f "icon/AppIcon.icns" ]]; then
     cp "icon/AppIcon.icns" "${APP_DIR}/Contents/Resources/AppIcon.icns"
 fi
 
-# Ad-hoc code signature so macOS will run it locally without Gatekeeper fuss.
+# Code signature. A STABLE identity lets the Keychain remember "Always Allow"
+# across launches/rebuilds; ad-hoc signatures change every build and re-prompt.
+#
+# Preference order:
+#   1) $TIMESHEETS_SIGN_ID if you export one
+#   2) a self-signed cert named "Time Sheets Signing" (see README to create one)
+#   3) ad-hoc (the "-" identity) as a fallback
 if command -v codesign >/dev/null 2>&1; then
-    echo "▸ Ad-hoc signing…"
-    codesign --force --deep --sign - "${APP_DIR}" || \
-        echo "  (ad-hoc signing failed; the app will still run but may prompt on first launch)"
+    SIGN_ID="${TIMESHEETS_SIGN_ID:-}"
+    if [[ -z "${SIGN_ID}" ]] && \
+       security find-identity -v -p codesigning 2>/dev/null | grep -q "Time Sheets Signing"; then
+        SIGN_ID="Time Sheets Signing"
+    fi
+
+    if [[ -n "${SIGN_ID}" ]]; then
+        echo "▸ Signing with '${SIGN_ID}'…"
+        codesign --force --deep --sign "${SIGN_ID}" "${APP_DIR}" || \
+            echo "  (signing with '${SIGN_ID}' failed)"
+    else
+        echo "▸ Ad-hoc signing (Keychain will re-prompt each launch — see README to fix)…"
+        codesign --force --deep --sign - "${APP_DIR}" || \
+            echo "  (ad-hoc signing failed; the app will still run but may prompt)"
+    fi
 fi
 
 echo "✓ Built ${APP_DIR}"
