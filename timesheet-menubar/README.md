@@ -17,6 +17,10 @@ app-switcher entry.
   is ready to submit.
 - **Weekends hidden by default:** a "Show weekends" toggle in the gear menu
   reveals them; when off, all weekend rows are hidden.
+- **Collapsed history:** the period picker keeps every active period but only
+  the most recent *completed* one; a "Show all timesheets" toggle (which notes
+  how many are hidden) reveals the full history. The period you're viewing is
+  always shown.
 - **Launch at login:** a toggle in the gear menu (via `SMAppService`).
 
 ## Requirements

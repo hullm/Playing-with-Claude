@@ -44,6 +44,10 @@ enum AppConfig {
     /// UserDefaults key for the "show weekends" preference (default off).
     static let showWeekendsDefaultsKey = "showWeekends"
 
+    /// UserDefaults key for showing every past timesheet vs. collapsing old
+    /// completed ones (default off = collapse).
+    static let showAllPeriodsDefaultsKey = "showAllPeriods"
+
     /// All personal access tokens are expected to start with this prefix.
     static let tokenPrefix = "tsk_"
 }

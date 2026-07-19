@@ -33,6 +33,9 @@ struct Period: Codable, Identifiable, Equatable {
 
     /// True when there's no sheet for this period yet.
     var notStarted: Bool { status == "not-started" }
+
+    /// True for a finished timesheet (shown as "Complete").
+    var isCompleted: Bool { status.lowercased() == "accepted" }
 }
 
 /// The lighter `period` object embedded in a timesheet response.

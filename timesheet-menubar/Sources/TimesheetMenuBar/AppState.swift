@@ -20,6 +20,12 @@ final class AppState: ObservableObject {
         didSet { UserDefaults.standard.set(showWeekends, forKey: AppConfig.showWeekendsDefaultsKey) }
     }
 
+    /// Show every past timesheet (default off collapses old completed ones,
+    /// keeping only the most recent completed period in the picker).
+    @Published var showAllPeriods: Bool {
+        didSet { UserDefaults.standard.set(showAllPeriods, forKey: AppConfig.showAllPeriodsDefaultsKey) }
+    }
+
     /// In-memory copy of the token so we read the Keychain at most once per
     /// launch (each read can trigger an OS access prompt for unsigned builds).
     private var cachedToken: String?
@@ -43,6 +49,28 @@ final class AppState: ObservableObject {
         self.hasToken = Keychain.hasToken(for: host)
         self.launchAtLogin = LaunchAtLogin.isEnabled
         self.showWeekends = UserDefaults.standard.bool(forKey: AppConfig.showWeekendsDefaultsKey)
+        self.showAllPeriods = UserDefaults.standard.bool(forKey: AppConfig.showAllPeriodsDefaultsKey)
+    }
+
+    /// Periods to show in the picker. When `showAllPeriods` is off, keep every
+    /// non-completed period plus only the most recent completed one — and always
+    /// keep whatever period is currently loaded so the picker's selection stays
+    /// valid. Assumes `periods` is newest-first (as the API returns them).
+    var visiblePeriods: [Period] {
+        guard !showAllPeriods else { return periods }
+        let loadedID = timesheet?.id
+        var keptCompleted = false
+        return periods.filter { period in
+            guard period.isCompleted else { return true }
+            if keptCompleted { return period.id == loadedID }
+            keptCompleted = true
+            return true
+        }
+    }
+
+    /// How many completed periods are hidden right now (for the menu label).
+    var hiddenCompletedCount: Int {
+        showAllPeriods ? 0 : periods.count - visiblePeriods.count
     }
 
     /// Switch to the connect screen so the user can change the server.

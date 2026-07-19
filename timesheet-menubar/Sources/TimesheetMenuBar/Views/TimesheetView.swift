@@ -63,7 +63,7 @@ struct TimesheetView: View {
                 get: { state.timesheet?.id ?? state.currentPeriod?.id ?? -1 },
                 set: { newID in Task { await state.loadTimesheet(periodID: newID) } }
             )) {
-                ForEach(state.periods) { period in
+                ForEach(state.visiblePeriods) { period in
                     Text("\(period.label) • \(period.isCurrent ? "current" : StatusLabel.text(period.status).lowercased())")
                         .tag(period.id)
                 }

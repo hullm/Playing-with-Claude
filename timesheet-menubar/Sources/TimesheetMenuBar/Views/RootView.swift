@@ -51,6 +51,12 @@ private struct HeaderBar: View {
 private struct FooterBar: View {
     @EnvironmentObject private var state: AppState
 
+    /// "Show all timesheets", annotated with how many are currently hidden.
+    private var showAllPeriodsLabel: String {
+        let hidden = state.hiddenCompletedCount
+        return hidden > 0 ? "Show all timesheets (\(hidden) hidden)" : "Show all timesheets"
+    }
+
     var body: some View {
         HStack(spacing: 12) {
             if let refreshed = state.lastRefreshed {
@@ -62,6 +68,7 @@ private struct FooterBar: View {
 
             Menu {
                 Toggle("Show weekends", isOn: $state.showWeekends)
+                Toggle(showAllPeriodsLabel, isOn: $state.showAllPeriods)
                 Toggle("Launch at login", isOn: Binding(
                     get: { state.launchAtLogin },
                     set: { state.setLaunchAtLogin($0) }
