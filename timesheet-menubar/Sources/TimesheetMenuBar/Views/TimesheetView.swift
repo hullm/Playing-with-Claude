@@ -200,6 +200,15 @@ private struct DayRow: View {
                                 .font(.caption2.weight(.semibold))
                                 .foregroundStyle(Color.accentColor)
                         }
+                        // Pre-filled (default) days aren't yet saved by the user.
+                        if !day.saved {
+                            Text("default")
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                                .padding(.horizontal, 5)
+                                .padding(.vertical, 1)
+                                .background(Color.secondary.opacity(0.15), in: Capsule())
+                        }
                     }
                     summaryLine
                         .font(.caption)

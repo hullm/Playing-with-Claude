@@ -23,6 +23,9 @@ app-switcher entry.
   always shown.
 - **Default hours:** a "Default hours…" gear-menu item edits your standard
   workday start/end (`GET`/`PUT /me/defaults`), which pre-fill blank days.
+- **Pre-fill marker:** days you haven't saved yet (still showing default data,
+  the API's `saved: false`) carry a small "default" tag so your manually
+  entered days stand out.
 - **Launch at login:** a toggle in the gear menu (via `SMAppService`).
 
 ## Requirements
