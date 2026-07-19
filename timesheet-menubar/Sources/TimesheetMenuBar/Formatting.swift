@@ -118,10 +118,22 @@ enum TimeString {
 
 /// User-facing wording for a timesheet/period status.
 enum StatusLabel {
+    /// Canonical form for comparisons: lowercased, separators unified to "-".
+    /// So "In Progress", "in_progress", and "in-progress" all compare equal.
+    static func normalized(_ status: String) -> String {
+        status.lowercased()
+            .replacingOccurrences(of: "_", with: "-")
+            .replacingOccurrences(of: " ", with: "-")
+    }
+
     static func text(_ status: String) -> String {
-        switch status.lowercased() {
+        switch normalized(status) {
         case "accepted": return "Complete"
-        default: return status.replacingOccurrences(of: "-", with: " ").capitalized
+        default:
+            return status
+                .replacingOccurrences(of: "_", with: " ")
+                .replacingOccurrences(of: "-", with: " ")
+                .capitalized
         }
     }
 }

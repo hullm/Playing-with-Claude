@@ -308,10 +308,11 @@ private struct StatusPill: View {
         StatusLabel.text(status)
     }
     private var color: Color {
-        switch status.lowercased() {
+        switch StatusLabel.normalized(status) {
         case "submitted", "approved", "accepted": return .green
         case "rejected": return .red
         case "draft": return editable ? .blue : .secondary
+        case "in-progress": return editable ? .teal : .secondary
         case "not-started": return .secondary
         default: return .secondary
         }

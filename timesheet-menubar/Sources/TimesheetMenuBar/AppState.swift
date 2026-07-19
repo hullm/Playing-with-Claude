@@ -335,11 +335,12 @@ final class AppState: ObservableObject {
         return submitBlockedMessage == nil
     }
 
-    /// True when the current period still needs attention (draft, editable, and
-    /// past its submit lock) — used to nudge via the menu bar icon.
+    /// True when the current period still needs attention (an active, editable
+    /// sheet past its submit lock) — used to nudge via the menu bar icon.
     var currentPeriodNeedsAction: Bool {
-        guard let ts = timesheet, ts.id == currentPeriod?.id,
-              ts.editable, ts.status.lowercased() == "draft" else { return false }
+        guard let ts = timesheet, ts.id == currentPeriod?.id, ts.editable else { return false }
+        let status = StatusLabel.normalized(ts.status)
+        guard status == "draft" || status == "in-progress" else { return false }
         return submitBlockedMessage == nil
     }
 
