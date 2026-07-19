@@ -200,8 +200,13 @@ private struct DayRow: View {
                                 .font(.caption2.weight(.semibold))
                                 .foregroundStyle(Color.accentColor)
                         }
-                        // Pre-filled (default) days aren't yet saved by the user.
-                        if !day.saved {
+                        // A saved day gets a green check; a pre-filled (default,
+                        // not-yet-saved) day gets a "default" tag.
+                        if day.saved {
+                            Image(systemName: "checkmark.circle.fill")
+                                .font(.caption2)
+                                .foregroundStyle(.green)
+                        } else {
                             Text("default")
                                 .font(.caption2)
                                 .foregroundStyle(.secondary)
