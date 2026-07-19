@@ -88,6 +88,16 @@ struct TimesheetView: View {
         ts.days.filter { state.showWeekends || !$0.isWeekend }
     }
 
+    /// True when `next` falls in a later week of the period than `day` — i.e.
+    /// the boundary between the period's two weeks.
+    private func startsNewWeek(_ next: Day, after day: Day, _ ts: Timesheet) -> Bool {
+        guard let a = DateParsing.weekIndex(startsOn: ts.period.startsOn, date: day.date),
+              let b = DateParsing.weekIndex(startsOn: ts.period.startsOn, date: next.date) else {
+            return false
+        }
+        return a != b
+    }
+
     private func daysList(_ ts: Timesheet) -> some View {
         let today = DateParsing.todayString()
         let days = visibleDays(ts)
@@ -95,13 +105,20 @@ struct TimesheetView: View {
         return ScrollViewReader { proxy in
             ScrollView {
                 VStack(spacing: 0) {
-                    ForEach(days) { day in
+                    ForEach(Array(days.enumerated()), id: \.element.date) { index, day in
                         DayRow(day: day, editable: ts.editable, isToday: day.date == today) {
                             state.errorMessage = nil
                             editingDay = day
                         }
                         .id(day.date)
-                        Divider()
+                        // A heavier rule separates the two weeks of the period.
+                        if index < days.count - 1, startsNewWeek(days[index + 1], after: day, ts) {
+                            Rectangle()
+                                .fill(Color.secondary.opacity(0.5))
+                                .frame(height: 3)
+                        } else {
+                            Divider()
+                        }
                     }
                 }
             }

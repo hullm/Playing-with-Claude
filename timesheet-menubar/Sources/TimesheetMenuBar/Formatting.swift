@@ -32,6 +32,24 @@ enum DateParsing {
         return f.string(from: Date())
     }
 
+    /// Parse a "YYYY-MM-DD" day (midnight US Eastern).
+    static func day(_ raw: String) -> Date? {
+        let f = DateFormatter()
+        f.calendar = Calendar(identifier: .gregorian)
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.timeZone = eastern
+        f.dateFormat = "yyyy-MM-dd"
+        return f.date(from: raw)
+    }
+
+    /// Which week of the period a date falls in (0 = first week, 1 = second),
+    /// measured from the period's start date. Nil if either date can't parse.
+    static func weekIndex(startsOn: String, date: String) -> Int? {
+        guard let start = day(startsOn), let d = day(date) else { return nil }
+        let days = Int((d.timeIntervalSince(start) / 86_400).rounded())
+        return max(0, days) / 7
+    }
+
     static func relativeTime(_ date: Date) -> String {
         let f = RelativeDateTimeFormatter()
         f.unitsStyle = .short
