@@ -16,8 +16,7 @@ app-switcher entry.
 - **At-a-glance menu bar:** the clock icon swaps to a nudge badge when a draft
   is ready to submit.
 - **Weekends hidden by default:** a "Show weekends" toggle in the gear menu
-  reveals them; empty weekends hide, but any weekend with logged time or time
-  off always shows.
+  reveals them; when off, all weekend rows are hidden.
 - **Launch at login:** a toggle in the gear menu (via `SMAppService`).
 
 ## Requirements

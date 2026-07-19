@@ -83,13 +83,9 @@ struct TimesheetView: View {
     // Never grow the list past this; scroll beyond it.
     private let maxListHeight: CGFloat = 470
 
-    /// Days to show: hides *empty* weekends unless "Show weekends" is on. A
-    /// weekend with worked time or time off always shows, so data is never
-    /// silently hidden.
+    /// Days to show: hides all weekend rows unless "Show weekends" is on.
     private func visibleDays(_ ts: Timesheet) -> [Day] {
-        ts.days.filter { day in
-            state.showWeekends || !(day.isWeekend && !day.hasWorkTime && !day.isTimeOff)
-        }
+        ts.days.filter { state.showWeekends || !$0.isWeekend }
     }
 
     private func daysList(_ ts: Timesheet) -> some View {
