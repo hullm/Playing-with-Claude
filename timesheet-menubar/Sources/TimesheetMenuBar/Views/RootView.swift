@@ -40,8 +40,13 @@ private struct HeaderBar: View {
         HStack(spacing: 8) {
             Image(systemName: "clock.badge.checkmark")
                 .foregroundStyle(.tint)
-            Text("Time Sheets")
-                .font(.headline)
+            HStack(alignment: .firstTextBaseline, spacing: 5) {
+                Text("Time Sheets")
+                    .font(.headline)
+                Text("v\(AppConfig.appVersion)")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
             Spacer()
         }
         .padding(.horizontal, 12)

@@ -50,4 +50,7 @@ enum AppConfig {
 
     /// All personal access tokens are expected to start with this prefix.
     static let tokenPrefix = "tsk_"
+
+    /// Displayed app version (keep in sync with Info.plist CFBundleShortVersionString).
+    static let appVersion = "1.0"
 }
