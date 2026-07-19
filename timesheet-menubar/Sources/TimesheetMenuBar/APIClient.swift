@@ -29,7 +29,7 @@ enum APIError: LocalizedError, Equatable {
 
 /// Async REST client for the Time Sheets API.
 struct APIClient {
-    let environment: ServerEnvironment
+    let baseURL: URL
     let token: String
     var session: URLSession = .shared
 
@@ -78,7 +78,7 @@ struct APIClient {
     }
 
     private func request(_ path: String, method: String) -> URLRequest {
-        let url = environment.baseURL.appendingPathComponent(path)
+        let url = baseURL.appendingPathComponent(path)
         var req = URLRequest(url: url)
         req.httpMethod = method
         req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")

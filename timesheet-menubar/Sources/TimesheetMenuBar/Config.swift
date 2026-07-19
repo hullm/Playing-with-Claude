@@ -1,47 +1,45 @@
 import Foundation
 
-/// Which Time Sheets deployment the app talks to.
-///
-/// The app develops against `dev` by default (as instructed by the server team).
-/// The user can flip to `prod` from the menu once they're ready.
-enum ServerEnvironment: String, CaseIterable, Identifiable {
-    case dev
-    case prod
-
-    var id: String { rawValue }
-
-    var baseURL: URL {
-        switch self {
-        case .dev:
-            return URL(string: "https://timesheets-dev.lkgeorge.org/api/v1")!
-        case .prod:
-            return URL(string: "https://timesheets.lkgeorge.org/api/v1")!
-        }
+/// The Time Sheets server the app talks to, identified by hostname (the user can
+/// change it). Tokens are stored per-host so different servers don't collide.
+enum Server {
+    /// Clean up user-entered text into a bare hostname:
+    /// "https://Timesheets.LKGeorge.org/api/v1/" → "timesheets.lkgeorge.org".
+    static func normalizeHost(_ raw: String) -> String {
+        var h = raw.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        if let scheme = h.range(of: "://") { h = String(h[scheme.upperBound...]) }
+        if let slash = h.firstIndex(of: "/") { h = String(h[..<slash]) }
+        if let at = h.lastIndex(of: "@") { h = String(h[h.index(after: at)...]) } // strip creds
+        return h.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
     }
 
-    var label: String {
-        switch self {
-        case .dev:  return "Development"
-        case .prod: return "Production"
-        }
+    /// Whether a normalized host is plausibly a real hostname.
+    static func isValidHost(_ host: String) -> Bool {
+        let h = normalizeHost(host)
+        return !h.isEmpty && h.contains(".") && !h.contains(" ")
     }
 
-    var shortLabel: String {
-        switch self {
-        case .dev:  return "DEV"
-        case .prod: return "PROD"
-        }
+    /// The REST base, e.g. https://timesheets.lkgeorge.org/api/v1
+    static func baseURL(host: String) -> URL? {
+        URL(string: "https://\(normalizeHost(host))/api/v1")
+    }
+
+    /// The web app root, e.g. https://timesheets.lkgeorge.org
+    static func webURL(host: String) -> URL? {
+        URL(string: "https://\(normalizeHost(host))")
     }
 }
 
 /// App-wide constants.
 enum AppConfig {
-    /// Keychain service identifier. Tokens are stored per-environment so a dev
-    /// token and a prod token can coexist without clobbering each other.
+    /// Keychain service identifier. Tokens are keyed by (service, host).
     static let keychainService = "org.lkgeorge.timesheets.menubar"
 
-    /// UserDefaults key holding the currently selected `ServerEnvironment`.
-    static let environmentDefaultsKey = "selectedEnvironment"
+    /// UserDefaults key holding the current server hostname.
+    static let serverHostDefaultsKey = "serverHost"
+
+    /// The server used until the user changes it.
+    static let defaultServerHost = "timesheets.lkgeorge.org"
 
     /// All personal access tokens are expected to start with this prefix.
     static let tokenPrefix = "tsk_"

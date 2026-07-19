@@ -10,9 +10,9 @@ app-switcher entry.
 
 - **Auth:** you paste a personal access token once; it's stored in the macOS
   **Keychain** (never on disk in plaintext) and sent as `Authorization: Bearer tsk_…`.
-- **Environments:** develops against the **dev** server by default
-  (`timesheets-dev.lkgeorge.org`); flip to **prod** from the gear menu. Dev and
-  prod tokens are stored separately.
+- **Server:** talks to `timesheets.lkgeorge.org` by default; enter any other
+  host (e.g. `timesheets-dev.lkgeorge.org`) on the connect screen or via
+  **Change server…** in the gear menu. Each server's token is stored separately.
 - **At-a-glance menu bar:** the clock icon swaps to a nudge badge when a draft
   is ready to submit.
 - **Launch at login:** a toggle in the gear menu (via `SMAppService`).
@@ -44,7 +44,8 @@ add it under **System Settings → General → Login Items** to launch at login.
 
 1. In the Time Sheets web app, go to **Settings → API access** and generate a
    personal access token (`tsk_…`).
-2. Click the menu bar clock icon → paste the token → **Connect**.
+2. Click the menu bar clock icon → confirm the **Server** (defaults to
+   `timesheets.lkgeorge.org`) → paste the token → **Connect**.
    The app verifies it against `GET /me` and stores it in the Keychain.
 3. If a token is ever rejected (HTTP 401), the app drops back to the paste
    screen automatically.
@@ -72,8 +73,8 @@ building.)
 
 ## How it maps to the API
 
-Base URL: `https://timesheets-dev.lkgeorge.org/api/v1` (dev) /
-`https://timesheets.lkgeorge.org/api/v1` (prod).
+Base URL: `https://<server>/api/v1`, where `<server>` is the host you enter
+(default `timesheets.lkgeorge.org`).
 
 | App action | Request |
 |---|---|
@@ -104,8 +105,8 @@ timezone US Eastern. Notes:
 ```
 Sources/TimesheetMenuBar/
   TimesheetApp.swift     App entry, MenuBarExtra scene, accessory-policy delegate
-  Config.swift           Dev/prod base URLs, Keychain + defaults keys
-  Keychain.swift         Per-environment token storage (Security framework)
+  Config.swift           Server host → base URL helpers, Keychain + defaults keys
+  Keychain.swift         Per-server token storage (Security framework)
   LaunchAtLogin.swift    SMAppService wrapper for the login-item toggle
   APIClient.swift        Async URLSession client, bearer auth, error mapping
   Models.swift           Codable models for every endpoint (matches API.md)

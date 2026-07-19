@@ -3,22 +3,17 @@ import SwiftUI
 
 /// Central observable state for the menu bar UI.
 ///
-/// Owns the selected environment + token, and drives all API traffic. Views
-/// observe this and call its `async` action methods.
+/// Owns the server hostname + token, and drives all API traffic. Views observe
+/// this and call its `async` action methods.
 @MainActor
 final class AppState: ObservableObject {
 
     // Configuration
-    @Published var environment: ServerEnvironment {
-        didSet {
-            UserDefaults.standard.set(environment.rawValue, forKey: AppConfig.environmentDefaultsKey)
-            // Environment changed → drop loaded data and re-check for a token.
-            resetLoadedState()
-            hasToken = Keychain.hasToken(for: environment)
-        }
-    }
+    @Published private(set) var serverHost: String
     @Published private(set) var hasToken: Bool
     @Published var launchAtLogin: Bool
+    /// When true, force the connect screen so the user can edit the server/token.
+    @Published var changingServer = false
 
     /// In-memory copy of the token so we read the Keychain at most once per
     /// launch (each read can trigger an OS access prompt for unsigned builds).
@@ -37,11 +32,32 @@ final class AppState: ObservableObject {
     @Published var lastRefreshed: Date?
 
     init() {
-        let raw = UserDefaults.standard.string(forKey: AppConfig.environmentDefaultsKey)
-        let env = raw.flatMap(ServerEnvironment.init(rawValue:)) ?? .dev
-        self.environment = env
-        self.hasToken = Keychain.hasToken(for: env)
+        let host = UserDefaults.standard.string(forKey: AppConfig.serverHostDefaultsKey)
+            ?? AppConfig.defaultServerHost
+        self.serverHost = host
+        self.hasToken = Keychain.hasToken(for: host)
         self.launchAtLogin = LaunchAtLogin.isEnabled
+    }
+
+    /// Switch to the connect screen so the user can change the server.
+    func beginChangingServer() {
+        errorMessage = nil
+        changingServer = true
+    }
+
+    /// Cancel an in-progress server change (only meaningful when already signed in).
+    func cancelChangingServer() {
+        errorMessage = nil
+        changingServer = false
+    }
+
+    private func applyServerHost(_ rawHost: String) {
+        let host = Server.normalizeHost(rawHost)
+        guard host != serverHost else { return }
+        serverHost = host
+        UserDefaults.standard.set(host, forKey: AppConfig.serverHostDefaultsKey)
+        resetLoadedState()
+        hasToken = Keychain.hasToken(for: host)
     }
 
     func setLaunchAtLogin(_ enabled: Bool) {
@@ -50,8 +66,14 @@ final class AppState: ObservableObject {
 
     // MARK: - Token management
 
-    /// Validate and store a pasted token. Returns true if the token works.
-    func saveAndVerifyToken(_ raw: String) async -> Bool {
+    /// Set the server and validate/store a pasted token. Returns true on success.
+    func connect(server rawHost: String, token raw: String) async -> Bool {
+        guard Server.isValidHost(rawHost) else {
+            errorMessage = "Enter a valid server name, like timesheets.lkgeorge.org."
+            return false
+        }
+        applyServerHost(rawHost)
+
         let token = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !token.isEmpty else {
             errorMessage = "Paste a token first."
@@ -61,14 +83,18 @@ final class AppState: ObservableObject {
             errorMessage = "That doesn't look like a personal access token (they start with \(AppConfig.tokenPrefix))."
             return false
         }
+        guard let baseURL = Server.baseURL(host: serverHost) else {
+            errorMessage = "Couldn't build a URL for that server."
+            return false
+        }
 
         isLoading = true
         defer { isLoading = false }
 
-        let client = APIClient(environment: environment, token: token)
+        let client = APIClient(baseURL: baseURL, token: token)
         do {
             let me = try await client.me()
-            guard Keychain.setToken(token, for: environment) else {
+            guard Keychain.setToken(token, for: serverHost) else {
                 errorMessage = "Couldn't save the token to the Keychain."
                 return false
             }
@@ -76,11 +102,12 @@ final class AppState: ObservableObject {
             self.cachedToken = token   // seed the cache so loads don't re-read
             self.hasToken = true
             self.needsReauth = false
+            self.changingServer = false
             self.errorMessage = nil
             await loadEverything()
             return true
         } catch APIError.unauthorized {
-            errorMessage = "That token was rejected. Double-check you copied the whole thing."
+            errorMessage = "That token was rejected for \(serverHost). Double-check the server and that you copied the whole token."
             return false
         } catch {
             errorMessage = (error as? APIError)?.errorDescription ?? error.localizedDescription
@@ -89,7 +116,7 @@ final class AppState: ObservableObject {
     }
 
     func signOut() {
-        Keychain.deleteToken(for: environment)
+        Keychain.deleteToken(for: serverHost)
         cachedToken = nil
         hasToken = false
         resetLoadedState()
@@ -178,13 +205,14 @@ final class AppState: ObservableObject {
     private func makeClient() -> APIClient? {
         // Prefer the in-memory copy; only touch the Keychain (which may prompt)
         // if we haven't read it yet this launch.
-        guard let token = cachedToken ?? Keychain.token(for: environment) else {
+        guard let baseURL = Server.baseURL(host: serverHost),
+              let token = cachedToken ?? Keychain.token(for: serverHost) else {
             hasToken = false
             needsReauth = true
             return nil
         }
         cachedToken = token
-        return APIClient(environment: environment, token: token)
+        return APIClient(baseURL: baseURL, token: token)
     }
 
     private func handle(_ error: Error) {
@@ -199,7 +227,7 @@ final class AppState: ObservableObject {
     }
 
     private func resetLoadedState() {
-        cachedToken = nil   // different environment → different token
+        cachedToken = nil   // different server → different token
         me = nil
         periods = []
         timesheet = nil
