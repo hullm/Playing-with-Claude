@@ -85,20 +85,31 @@ struct TimesheetView: View {
 
     private func daysList(_ ts: Timesheet) -> some View {
         let today = DateParsing.todayString()
-        return ScrollView {
-            VStack(spacing: 0) {
-                ForEach(ts.days) { day in
-                    DayRow(day: day, editable: ts.editable, isToday: day.date == today) {
-                        state.errorMessage = nil
-                        editingDay = day
+        let hasToday = ts.days.contains { $0.date == today }
+        return ScrollViewReader { proxy in
+            ScrollView {
+                VStack(spacing: 0) {
+                    ForEach(ts.days) { day in
+                        DayRow(day: day, editable: ts.editable, isToday: day.date == today) {
+                            state.errorMessage = nil
+                            editingDay = day
+                        }
+                        .id(day.date)
+                        Divider()
                     }
-                    Divider()
                 }
             }
+            // A ScrollView has no intrinsic height, so give it a definite one:
+            // fit the days exactly for short lists, cap + scroll for the full 14.
+            .frame(height: min(CGFloat(ts.days.count) * rowHeight, maxListHeight))
+            // When the menu opens, bring today's row into view if it isn't
+            // already (anchor: nil does a minimal scroll, so a visible row
+            // doesn't move). No-op when the period doesn't contain today.
+            .onAppear {
+                guard hasToday else { return }
+                DispatchQueue.main.async { proxy.scrollTo(today, anchor: nil) }
+            }
         }
-        // A ScrollView has no intrinsic height, so give it a definite one:
-        // fit the days exactly for short lists, cap + scroll for the full 14.
-        .frame(height: min(CGFloat(ts.days.count) * rowHeight, maxListHeight))
     }
 
     private func submitSection(_ ts: Timesheet) -> some View {
