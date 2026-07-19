@@ -84,10 +84,11 @@ struct TimesheetView: View {
     private let maxListHeight: CGFloat = 470
 
     private func daysList(_ ts: Timesheet) -> some View {
-        ScrollView {
+        let today = DateParsing.todayString()
+        return ScrollView {
             VStack(spacing: 0) {
                 ForEach(ts.days) { day in
-                    DayRow(day: day, editable: ts.editable) {
+                    DayRow(day: day, editable: ts.editable, isToday: day.date == today) {
                         state.errorMessage = nil
                         editingDay = day
                     }
@@ -165,15 +166,24 @@ struct TimesheetView: View {
 private struct DayRow: View {
     let day: Day
     let editable: Bool
+    let isToday: Bool
     let onTap: () -> Void
 
     var body: some View {
         Button(action: onTap) {
             HStack(spacing: 10) {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(DateParsing.displayDate(day.date))
-                        .font(.callout.weight(.medium))
-                        .foregroundStyle(day.isWeekend ? .secondary : .primary)
+                    HStack(spacing: 6) {
+                        Text(DateParsing.displayDate(day.date))
+                            .font(.callout.weight(isToday ? .semibold : .medium))
+                            .foregroundStyle(isToday ? Color.accentColor
+                                             : (day.isWeekend ? Color.secondary : Color.primary))
+                        if isToday {
+                            Text("Today")
+                                .font(.caption2.weight(.semibold))
+                                .foregroundStyle(Color.accentColor)
+                        }
+                    }
                     summaryLine
                         .font(.caption)
                         .foregroundStyle(.secondary)
@@ -192,6 +202,14 @@ private struct DayRow: View {
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 8)
+            .background(isToday ? Color.accentColor.opacity(0.10) : Color.clear)
+            .overlay(alignment: .leading) {
+                if isToday {
+                    Rectangle()
+                        .fill(Color.accentColor)
+                        .frame(width: 3)
+                }
+            }
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)

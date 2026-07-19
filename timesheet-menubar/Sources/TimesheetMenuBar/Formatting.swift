@@ -21,6 +21,17 @@ enum DateParsing {
         return outFmt.string(from: date)
     }
 
+    /// Today's date as "YYYY-MM-DD" in US Eastern (the timesheet's timezone),
+    /// so "today" is correct no matter where the user's Mac is set.
+    static func todayString() -> String {
+        let f = DateFormatter()
+        f.calendar = Calendar(identifier: .gregorian)
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.timeZone = eastern
+        f.dateFormat = "yyyy-MM-dd"
+        return f.string(from: Date())
+    }
+
     static func relativeTime(_ date: Date) -> String {
         let f = RelativeDateTimeFormatter()
         f.unitsStyle = .short
