@@ -40,13 +40,8 @@ private struct HeaderBar: View {
         HStack(spacing: 8) {
             Image(systemName: "clock.badge.checkmark")
                 .foregroundStyle(.tint)
-            HStack(alignment: .firstTextBaseline, spacing: 5) {
-                Text("Time Sheets")
-                    .font(.headline)
-                Text("v\(AppConfig.appVersion)")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-            }
+            Text("Time Sheets")
+                .font(.headline)
             Spacer()
         }
         .padding(.horizontal, 12)
@@ -65,7 +60,10 @@ private struct FooterBar: View {
     }
 
     var body: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: 10) {
+            Text(AppConfig.appVersion)
+                .font(.caption2)
+                .foregroundStyle(.secondary)
             if let refreshed = state.lastRefreshed {
                 Text("Updated \(DateParsing.relativeTime(refreshed))")
                     .font(.caption2)
