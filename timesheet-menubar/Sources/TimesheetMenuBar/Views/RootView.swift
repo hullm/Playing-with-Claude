@@ -61,6 +61,7 @@ private struct FooterBar: View {
             Spacer()
 
             Menu {
+                Toggle("Show weekends", isOn: $state.showWeekends)
                 Toggle("Launch at login", isOn: Binding(
                     get: { state.launchAtLogin },
                     set: { state.setLaunchAtLogin($0) }

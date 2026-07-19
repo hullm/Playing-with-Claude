@@ -15,6 +15,9 @@ app-switcher entry.
   **Change server…** in the gear menu. Each server's token is stored separately.
 - **At-a-glance menu bar:** the clock icon swaps to a nudge badge when a draft
   is ready to submit.
+- **Weekends hidden by default:** a "Show weekends" toggle in the gear menu
+  reveals them; empty weekends hide, but any weekend with logged time or time
+  off always shows.
 - **Launch at login:** a toggle in the gear menu (via `SMAppService`).
 
 ## Requirements

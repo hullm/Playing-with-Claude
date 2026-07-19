@@ -83,13 +83,23 @@ struct TimesheetView: View {
     // Never grow the list past this; scroll beyond it.
     private let maxListHeight: CGFloat = 470
 
+    /// Days to show: hides *empty* weekends unless "Show weekends" is on. A
+    /// weekend with worked time or time off always shows, so data is never
+    /// silently hidden.
+    private func visibleDays(_ ts: Timesheet) -> [Day] {
+        ts.days.filter { day in
+            state.showWeekends || !(day.isWeekend && !day.hasWorkTime && !day.isTimeOff)
+        }
+    }
+
     private func daysList(_ ts: Timesheet) -> some View {
         let today = DateParsing.todayString()
-        let hasToday = ts.days.contains { $0.date == today }
+        let days = visibleDays(ts)
+        let hasToday = days.contains { $0.date == today }
         return ScrollViewReader { proxy in
             ScrollView {
                 VStack(spacing: 0) {
-                    ForEach(ts.days) { day in
+                    ForEach(days) { day in
                         DayRow(day: day, editable: ts.editable, isToday: day.date == today) {
                             state.errorMessage = nil
                             editingDay = day
@@ -101,7 +111,7 @@ struct TimesheetView: View {
             }
             // A ScrollView has no intrinsic height, so give it a definite one:
             // fit the days exactly for short lists, cap + scroll for the full 14.
-            .frame(height: min(CGFloat(ts.days.count) * rowHeight, maxListHeight))
+            .frame(height: min(CGFloat(days.count) * rowHeight, maxListHeight))
             // When the menu opens, bring today's row into view if it isn't
             // already (anchor: nil does a minimal scroll, so a visible row
             // doesn't move). No-op when the period doesn't contain today.

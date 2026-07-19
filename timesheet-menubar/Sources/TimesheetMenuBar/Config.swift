@@ -41,6 +41,9 @@ enum AppConfig {
     /// The server used until the user changes it.
     static let defaultServerHost = "timesheets.lkgeorge.org"
 
+    /// UserDefaults key for the "show weekends" preference (default off).
+    static let showWeekendsDefaultsKey = "showWeekends"
+
     /// All personal access tokens are expected to start with this prefix.
     static let tokenPrefix = "tsk_"
 }

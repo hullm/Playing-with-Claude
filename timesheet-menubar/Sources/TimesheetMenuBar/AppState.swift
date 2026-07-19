@@ -15,6 +15,11 @@ final class AppState: ObservableObject {
     /// When true, force the connect screen so the user can edit the server/token.
     @Published var changingServer = false
 
+    /// Show weekend rows in the day list (default off — empty weekends hide).
+    @Published var showWeekends: Bool {
+        didSet { UserDefaults.standard.set(showWeekends, forKey: AppConfig.showWeekendsDefaultsKey) }
+    }
+
     /// In-memory copy of the token so we read the Keychain at most once per
     /// launch (each read can trigger an OS access prompt for unsigned builds).
     private var cachedToken: String?
@@ -37,6 +42,7 @@ final class AppState: ObservableObject {
         self.serverHost = host
         self.hasToken = Keychain.hasToken(for: host)
         self.launchAtLogin = LaunchAtLogin.isEnabled
+        self.showWeekends = UserDefaults.standard.bool(forKey: AppConfig.showWeekendsDefaultsKey)
     }
 
     /// Switch to the connect screen so the user can change the server.
