@@ -84,6 +84,9 @@ private struct FooterBar: View {
                 }
                 Divider()
                 Section(state.serverHost) {
+                    if let web = Server.webURL(host: state.serverHost) {
+                        Link("Open Time Sheets website", destination: web)
+                    }
                     Button("Change server…") { state.beginChangingServer() }
                 }
                 if state.hasToken {
