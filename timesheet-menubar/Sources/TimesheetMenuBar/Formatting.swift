@@ -132,6 +132,20 @@ enum TimeString {
         guard let canonical = parse24(s) else { return s }
         return display12(canonical)
     }
+
+    /// Minutes since midnight for a 24-hour "HH:MM" string.
+    static func minutes(_ hhmm24: String) -> Int? {
+        let parts = hhmm24.split(separator: ":")
+        guard parts.count == 2, let h = Int(parts[0]), let m = Int(parts[1]),
+              (0...23).contains(h), (0...59).contains(m) else { return nil }
+        return h * 60 + m
+    }
+
+    /// Build a 24-hour "HH:MM" from minutes since midnight.
+    static func fromMinutes(_ total: Int) -> String {
+        let t = ((total % 1440) + 1440) % 1440
+        return String(format: "%02d:%02d", t / 60, t % 60)
+    }
 }
 
 /// User-facing wording for a timesheet/period status.

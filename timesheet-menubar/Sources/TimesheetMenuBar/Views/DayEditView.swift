@@ -19,6 +19,7 @@ struct DayEditView: View {
     @State private var offReason = ""     // "" = none, else a DayType.slug
     @State private var offPortion = "full"
     @State private var saving = false
+    @State private var loaded = false     // true once the initial load has settled
 
     private var dayTypes: [DayType] { state.timesheet?.dayTypes ?? [] }
     private var offPortions: [OffPortionOption] { state.timesheet?.offPortions ?? [] }
@@ -56,7 +57,19 @@ struct DayEditView: View {
                         ForEach(offPortions) { p in Text(p.label).tag(p.value) }
                     }
                     .pickerStyle(.segmented)
+                    if offPortion == "am" || offPortion == "pm" {
+                        Text("Worked half filled in from your standard hours — edit if needed.")
+                            .font(.caption2).foregroundStyle(.secondary)
+                    }
                 }
+            }
+            // Auto-fill the worked half when a half-day off is chosen (only
+            // after load, so an existing half-day's saved times aren't clobbered).
+            .onChange(of: offReason) { reason in
+                if loaded, !reason.isEmpty { applyHalfDay(offPortion) }
+            }
+            .onChange(of: offPortion) { portion in
+                if loaded, !offReason.isEmpty { applyHalfDay(portion) }
             }
 
             noteField
@@ -82,7 +95,12 @@ struct DayEditView: View {
             }
         }
         .padding(12)
-        .onAppear(perform: loadFromDay)
+        .onAppear {
+            loadFromDay()
+            // Let the initial load settle before honoring onChange auto-fills,
+            // so opening an existing half-day doesn't overwrite its saved times.
+            DispatchQueue.main.async { loaded = true }
+        }
     }
 
     private var header: some View {
@@ -126,6 +144,36 @@ struct DayEditView: View {
         offReason = day.offReason
         offPortion = day.offPortion.isEmpty ? (offPortions.first?.value ?? "full") : day.offPortion
         state.errorMessage = nil
+    }
+
+    /// The standard workday (24-hour "HH:MM") used to split a half day: prefer
+    /// the period's defaults, else the day's own regular times.
+    private var workday: (start: String, end: String)? {
+        if let d = state.timesheet?.defaults, !d.regStart.isEmpty, !d.regEnd.isEmpty {
+            return (d.regStart, d.regEnd)
+        }
+        if !day.regStart.isEmpty, !day.regEnd.isEmpty {
+            return (day.regStart, day.regEnd)
+        }
+        return nil
+    }
+
+    /// Fill Regular start/end with the worked half for an AM/PM off. "am" means
+    /// the morning is off (so you work the afternoon); "pm" the reverse. Full
+    /// day and unknown portions are left to the save step (which clears times).
+    private func applyHalfDay(_ portion: String) {
+        guard portion == "am" || portion == "pm",
+              let wd = workday,
+              let startMin = TimeString.minutes(wd.start),
+              let endMin = TimeString.minutes(wd.end), endMin > startMin else { return }
+        let midMin = (startMin + endMin) / 2
+        if portion == "am" {   // morning off → work the afternoon half
+            regStart = TimeString.display12(TimeString.fromMinutes(midMin))
+            regEnd = TimeString.display12(TimeString.fromMinutes(endMin))
+        } else {               // afternoon off → work the morning half
+            regStart = TimeString.display12(TimeString.fromMinutes(startMin))
+            regEnd = TimeString.display12(TimeString.fromMinutes(midMin))
+        }
     }
 
     private func save() {
