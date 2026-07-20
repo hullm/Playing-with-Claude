@@ -5,6 +5,7 @@ struct TimesheetView: View {
     @EnvironmentObject private var state: AppState
     @State private var editingDay: Day?
     @State private var submitResult: SubmitOutcome?
+    @State private var measuredListHeight: CGFloat = 0
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -78,10 +79,11 @@ struct TimesheetView: View {
         .padding(.vertical, 8)
     }
 
-    // Approximate rendered height of one DayRow (content + padding + divider).
+    // Approximate rendered height of one DayRow (fallback before measurement).
     private let rowHeight: CGFloat = 47
-    // Never grow the list past this; scroll beyond it.
-    private let maxListHeight: CGFloat = 470
+    // Never grow the list past this; scroll beyond it. High enough that the 10
+    // weekday rows (weekends hidden) fit without scrolling; the full 14 scroll.
+    private let maxListHeight: CGFloat = 540
 
     /// Days to show: hides all weekend rows unless "Show weekends" is on.
     private func visibleDays(_ ts: Timesheet) -> [Day] {
@@ -121,10 +123,17 @@ struct TimesheetView: View {
                         }
                     }
                 }
+                // Measure the true content height so the frame fits it exactly
+                // (no stray scroll from an off-by-a-few-pixels estimate).
+                .background(GeometryReader { geo in
+                    Color.clear.preference(key: DayListHeightKey.self, value: geo.size.height)
+                })
             }
             // A ScrollView has no intrinsic height, so give it a definite one:
-            // fit the days exactly for short lists, cap + scroll for the full 14.
-            .frame(height: min(CGFloat(days.count) * rowHeight, maxListHeight))
+            // exact content height when it fits, capped (scrolling) beyond that.
+            .frame(height: min(measuredListHeight > 0 ? measuredListHeight
+                               : CGFloat(days.count) * rowHeight, maxListHeight))
+            .onPreferenceChange(DayListHeightKey.self) { measuredListHeight = $0 }
             // When the menu opens, bring today's row into view if it isn't
             // already (anchor: nil does a minimal scroll, so a visible row
             // doesn't move). No-op when the period doesn't contain today.
@@ -196,6 +205,14 @@ struct TimesheetView: View {
 }
 
 // MARK: - Row
+
+/// Reports the day list's true content height so its frame can fit exactly.
+private struct DayListHeightKey: PreferenceKey {
+    static var defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = max(value, nextValue())
+    }
+}
 
 private struct DayRow: View {
     let day: Day
