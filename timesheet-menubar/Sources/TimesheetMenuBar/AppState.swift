@@ -1,5 +1,6 @@
 import Foundation
 import SwiftUI
+import AppKit
 
 /// Central observable state for the menu bar UI.
 ///
@@ -44,6 +45,11 @@ final class AppState: ObservableObject {
     @Published var needsReauth = false
     @Published var lastRefreshed: Date?
 
+    /// Current date ("YYYY-MM-DD", US Eastern). Published so the "Today" marker
+    /// stays correct in this long-running menu bar app: updating it re-renders
+    /// the view even when it wouldn't otherwise refresh on open.
+    @Published private(set) var today: String
+
     init() {
         let host = UserDefaults.standard.string(forKey: AppConfig.serverHostDefaultsKey)
             ?? AppConfig.defaultServerHost
@@ -52,6 +58,33 @@ final class AppState: ObservableObject {
         self.launchAtLogin = LaunchAtLogin.isEnabled
         self.showWeekends = UserDefaults.standard.bool(forKey: AppConfig.showWeekendsDefaultsKey)
         self.showAllPeriods = UserDefaults.standard.bool(forKey: AppConfig.showAllPeriodsDefaultsKey)
+        self.today = DateParsing.todayString()
+        startClock()
+    }
+
+    /// Watch for the day rolling over — periodically, on the system day-change
+    /// notification, and on wake from sleep (which can cross midnight).
+    private func startClock() {
+        Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { [weak self] _ in
+            Task { @MainActor in self?.tick() }
+        }
+        NotificationCenter.default.addObserver(
+            forName: .NSCalendarDayChanged, object: nil, queue: .main
+        ) { [weak self] _ in Task { @MainActor in self?.tick() } }
+        NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.didWakeNotification, object: nil, queue: .main
+        ) { [weak self] _ in Task { @MainActor in self?.tick() } }
+    }
+
+    /// Refresh the current date; if the day changed, reload so the sheet and the
+    /// "Today" highlight are current. Also called when the menu opens.
+    func tick() {
+        let now = DateParsing.todayString()
+        guard now != today else { return }
+        today = now
+        if hasToken && !needsReauth {
+            Task { await loadEverything() }
+        }
     }
 
     /// Periods to show in the picker. When `showAllPeriods` is off, keep every

@@ -31,6 +31,10 @@ struct RootView: View {
                 await state.loadEverything()
             }
         }
+        .onAppear {
+            // Catch a day rollover the instant the menu opens.
+            state.tick()
+        }
     }
 }
 

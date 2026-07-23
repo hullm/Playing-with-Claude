@@ -101,7 +101,7 @@ struct TimesheetView: View {
     }
 
     private func daysList(_ ts: Timesheet) -> some View {
-        let today = DateParsing.todayString()
+        let today = state.today
         let days = visibleDays(ts)
         let hasToday = days.contains { $0.date == today }
         return ScrollViewReader { proxy in
