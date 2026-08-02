@@ -282,7 +282,9 @@ private struct DayRow: View {
     }
 
     @ViewBuilder private var summaryLine: some View {
-        if day.isTimeOff {
+        if isSplitDay {
+            Text(splitSummary)
+        } else if day.isTimeOff {
             Text(timeOffSummary)
         } else if day.hasWorkTime {
             Text(workSummary)
@@ -291,6 +293,21 @@ private struct DayRow: View {
         } else {
             Text("—")
         }
+    }
+
+    /// Hours worked that day (reg + ot), straight from `hours` — never a span.
+    private var workedHours: Double { day.hours.reg + day.hours.ot }
+
+    /// A day that is partly worked and partly time off (e.g. a half day).
+    private var isSplitDay: Bool { day.hours.off > 0 && workedHours > 0 }
+
+    /// "3.5h worked + 3.5h off — personal_day (PM)" — reads with the total on
+    /// the right as the sum.
+    private var splitSummary: String {
+        let reason = day.offReason.isEmpty ? "time off" : day.offReason
+        let portion = day.offPortion.isEmpty || day.offPortion == "full"
+            ? "" : " (\(day.offPortion.uppercased()))"
+        return "\(workedHours.hoursLabel)h worked + \(day.hours.off.hoursLabel)h off — \(reason)\(portion)"
     }
 
     private var timeOffSummary: String {
