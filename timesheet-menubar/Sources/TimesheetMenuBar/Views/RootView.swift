@@ -57,29 +57,32 @@ private struct HeaderBar: View {
     }
 }
 
-/// The active-server badge. Production is calm (subtle green); development is
-/// loud (solid orange) to catch attention when you're not where you expect.
+/// The active-server badge. Production shows *nothing* — no badge means prod,
+/// so its absence is the "you're safe" signal. Development is loud (solid
+/// orange) to grab attention; custom servers get a neutral gray tag.
 struct ServerBadge: View {
     let server: ServerInfo
     var body: some View {
-        Text(server.badgeLabel)
-            .font(.caption2.bold())
-            .padding(.horizontal, 7)
-            .padding(.vertical, 2)
-            .background(background)
-            .foregroundStyle(foreground)
-            .clipShape(Capsule())
+        if server.badge != .prod {
+            Text(server.badgeLabel)
+                .font(.caption2.bold())
+                .padding(.horizontal, 7)
+                .padding(.vertical, 2)
+                .background(background)
+                .foregroundStyle(foreground)
+                .clipShape(Capsule())
+        }
     }
     private var background: Color {
         switch server.badge {
-        case .prod:   return .green.opacity(0.18)
+        case .prod:   return .clear
         case .dev:    return .orange              // solid = attention
         case .custom: return .gray.opacity(0.2)
         }
     }
     private var foreground: Color {
         switch server.badge {
-        case .prod:   return .green
+        case .prod:   return .clear
         case .dev:    return .white
         case .custom: return .secondary
         }

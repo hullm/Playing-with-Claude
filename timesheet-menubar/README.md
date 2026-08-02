@@ -13,8 +13,9 @@ app-switcher entry.
 - **Multiple servers, per-server tokens:** gear → **Servers…** lists Production
   and Development (add your own custom hosts too). Each server keeps its **own**
   token in the Keychain, so switching just reuses the stored one — no re-pasting,
-  and switching never touches another server's token. A colored badge in the
-  header shows where you are (loud orange for **DEV**, calm green for **PROD**).
+  and switching never touches another server's token. Production shows **no
+  badge** (its absence is the all-clear); leaving prod raises a loud orange
+  **DEV** badge in the header to catch your attention (custom hosts get a gray tag).
   The Servers screen shows which servers have a token (by its 12-char prefix) and
   lets you remove a token or a custom server. A revoked token (401) prompts to
   replace it for that server only.
