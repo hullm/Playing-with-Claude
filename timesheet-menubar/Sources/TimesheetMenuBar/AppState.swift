@@ -80,18 +80,53 @@ final class AppState: ObservableObject {
         startClock()
     }
 
+    /// How often the app checks in with the server on its own.
+    private static let autoRefreshInterval: TimeInterval = 15 * 60
+
     /// Watch for the day rolling over — periodically, on the system day-change
-    /// notification, and on wake from sleep (which can cross midnight).
+    /// notification, and on wake from sleep (which can cross midnight) — and
+    /// quietly re-sync with the server on a timer and on wake, so the sheet
+    /// stays fresh without having to hit reload.
     private func startClock() {
         Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { [weak self] _ in
             Task { @MainActor in self?.tick() }
+        }
+        Timer.scheduledTimer(withTimeInterval: Self.autoRefreshInterval, repeats: true) { [weak self] _ in
+            Task { @MainActor in await self?.autoRefresh() }
         }
         NotificationCenter.default.addObserver(
             forName: .NSCalendarDayChanged, object: nil, queue: .main
         ) { [weak self] _ in Task { @MainActor in self?.tick() } }
         NSWorkspace.shared.notificationCenter.addObserver(
             forName: NSWorkspace.didWakeNotification, object: nil, queue: .main
-        ) { [weak self] _ in Task { @MainActor in self?.tick() } }
+        ) { [weak self] _ in
+            Task { @MainActor in
+                self?.tick()
+                await self?.autoRefresh()
+            }
+        }
+    }
+
+    /// Silent background sync: refresh the period list and whichever period is
+    /// currently shown (without snapping to the current one or flashing the
+    /// spinner). Skips while another load is in flight or when signed out.
+    /// Transient failures are swallowed; only a 401 is surfaced.
+    func autoRefresh() async {
+        guard hasToken, !needsReauth, !isLoading, let client = makeClient() else { return }
+        do {
+            let periods = try await client.periods()
+            self.periods = periods
+            let targetID = timesheet?.id
+                ?? (periods.first(where: { $0.isCurrent }) ?? periods.first)?.id
+            if let targetID {
+                self.timesheet = try await client.timesheet(periodID: targetID)
+            }
+            self.lastRefreshed = Date()
+        } catch APIError.unauthorized {
+            handle(APIError.unauthorized)
+        } catch {
+            // Offline / transient — stay quiet; the next tick will retry.
+        }
     }
 
     /// Refresh the current date; if the day changed, reload so the sheet and the

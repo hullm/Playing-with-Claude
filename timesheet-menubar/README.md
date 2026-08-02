@@ -32,6 +32,10 @@ app-switcher entry.
 - **Pre-fill marker:** days you haven't saved yet (still showing default data,
   the API's `saved: false`) carry a small "default" tag so your manually
   entered days stand out.
+- **Auto-refresh:** the app quietly re-syncs with the server every 15 minutes
+  (and on wake from sleep), keeping the period you're viewing current without a
+  manual reload. It's silent — no spinner, and it won't snap you off a past
+  period you're looking at. The reload button still forces an immediate refresh.
 - **Launch at login:** a toggle in the gear menu (via `SMAppService`).
 
 ## Requirements
