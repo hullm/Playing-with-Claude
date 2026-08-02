@@ -116,6 +116,12 @@ struct DayEditView: View {
                 .font(.callout)
             }
 
+            if let overlap = overlapMessage {
+                Text(overlap)
+                    .font(.caption2).foregroundStyle(.red)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
             Text(isFullDayOff
                  ? "A full-day off clears worked time automatically."
                  : "Each period is paid on its own — gaps between them aren't.")
@@ -185,13 +191,44 @@ struct DayEditView: View {
                 guard TimeString.isValid(p.start), TimeString.isValid(p.end) else { return false }
                 if p.start.isEmpty != p.end.isEmpty { return false }  // both or neither
             }
-            return true
+            return overlapMessage == nil
         } else {
             let times = [regStart, regEnd, otStart, otEnd].allSatisfy(TimeString.isValid)
             let regPaired = regStart.isEmpty == regEnd.isEmpty
             let otPaired = otStart.isEmpty == otEnd.isEmpty
             return times && regPaired && otPaired
         }
+    }
+
+    /// Non-nil when two work periods of the SAME kind overlap (reg-vs-reg or
+    /// ot-vs-ot); the message names the clashing pair. Matches the server rule
+    /// so the user is stopped before a 422. Touching ends (11–2 after 8–11) are
+    /// allowed.
+    private var overlapMessage: String? {
+        for kind in [Segment.Kind.reg, .ot] {
+            let ranges = periods
+                .filter { $0.kind == kind }
+                .compactMap { p -> (start: Int, end: Int, label: String)? in
+                    guard let s = TimeString.parse24(p.start).flatMap(TimeString.minutes),
+                          let e = TimeString.parse24(p.end).flatMap(TimeString.minutes),
+                          e > s else { return nil }
+                    let label = "\(TimeString.display12(TimeString.fromMinutes(s)))–\(TimeString.display12(TimeString.fromMinutes(e)))"
+                    return (s, e, label)
+                }
+                .sorted { $0.start < $1.start }
+
+            // Sweep by start; if a period begins before the furthest end so far,
+            // it overlaps the period that set that end.
+            var maxEnd = -1
+            var maxLabel = ""
+            for r in ranges {
+                if r.start < maxEnd {
+                    return "These \(kind == .ot ? "overtime" : "worked") periods overlap: \(maxLabel) and \(r.label)."
+                }
+                if r.end > maxEnd { maxEnd = r.end; maxLabel = r.label }
+            }
+        }
+        return nil
     }
 
     private func remove(_ id: EditablePeriod.ID) {
