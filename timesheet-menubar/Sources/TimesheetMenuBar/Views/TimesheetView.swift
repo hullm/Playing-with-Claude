@@ -302,12 +302,17 @@ private struct DayRow: View {
     private var isSplitDay: Bool { day.hours.off > 0 && workedHours > 0 }
 
     /// "3.5h worked + 3.5h off — personal_day (PM)" — reads with the total on
-    /// the right as the sum.
+    /// the right as the sum. Ordered chronologically: an AM off leads with the
+    /// time off, a PM off leads with the worked morning.
     private var splitSummary: String {
         let reason = day.offReason.isEmpty ? "time off" : day.offReason
         let portion = day.offPortion.isEmpty || day.offPortion == "full"
             ? "" : " (\(day.offPortion.uppercased()))"
-        return "\(workedHours.hoursLabel)h worked + \(day.hours.off.hoursLabel)h off — \(reason)\(portion)"
+        let worked = "\(workedHours.hoursLabel)h worked"
+        let off = "\(day.hours.off.hoursLabel)h off"
+        let offFirst = day.offPortion.lowercased() == "am"   // morning off comes first
+        let parts = offFirst ? "\(off) + \(worked)" : "\(worked) + \(off)"
+        return "\(parts) — \(reason)\(portion)"
     }
 
     private var timeOffSummary: String {
