@@ -13,10 +13,19 @@ final class AppState: ObservableObject {
     @Published private(set) var serverHost: String
     @Published private(set) var hasToken: Bool
     @Published var launchAtLogin: Bool
-    /// When true, force the connect screen so the user can edit the server/token.
-    @Published var changingServer = false
+    /// When true, show the server-management screen.
+    @Published var editingServers = false
     /// When true, show the default-hours editor.
     @Published var editingDefaults = false
+
+    /// User-added custom servers (built-ins live in AppConfig).
+    @Published private(set) var customServers: [ServerInfo]
+    /// Hosts that currently have a stored token (kept in sync explicitly so the
+    /// UI updates; each entry is a prompt-free existence check).
+    @Published private(set) var serversWithToken: Set<String> = []
+    /// host → first-12-char token prefix, for an identifying label. This prefix
+    /// is the public identifier the website shows, so UserDefaults is fine.
+    @Published private(set) var tokenPrefixes: [String: String]
 
     /// Show weekend rows in the day list (default off — empty weekends hide).
     @Published var showWeekends: Bool {
@@ -58,7 +67,16 @@ final class AppState: ObservableObject {
         self.launchAtLogin = LaunchAtLogin.isEnabled
         self.showWeekends = UserDefaults.standard.bool(forKey: AppConfig.showWeekendsDefaultsKey)
         self.showAllPeriods = UserDefaults.standard.bool(forKey: AppConfig.showAllPeriodsDefaultsKey)
+        if let data = UserDefaults.standard.data(forKey: AppConfig.customServersDefaultsKey),
+           let list = try? JSONDecoder().decode([ServerInfo].self, from: data) {
+            self.customServers = list
+        } else {
+            self.customServers = []
+        }
+        self.tokenPrefixes = UserDefaults.standard.dictionary(forKey: AppConfig.tokenPrefixesDefaultsKey)
+            as? [String: String] ?? [:]
         self.today = DateParsing.todayString()
+        refreshTokenStatus()
         startClock()
     }
 
@@ -108,16 +126,97 @@ final class AppState: ObservableObject {
         showAllPeriods ? 0 : periods.count - visiblePeriods.count
     }
 
-    /// Switch to the connect screen so the user can change the server.
-    func beginChangingServer() {
-        errorMessage = nil
-        changingServer = true
+    // MARK: - Servers
+
+    /// Built-in servers plus the user's custom ones.
+    var knownServers: [ServerInfo] { AppConfig.builtInServers + customServers }
+
+    /// The server the app is currently pointed at.
+    var selectedServer: ServerInfo {
+        knownServers.first { $0.host == serverHost }
+            ?? ServerInfo(name: serverHost, host: serverHost, isBuiltIn: false)
     }
 
-    /// Cancel an in-progress server change (only meaningful when already signed in).
-    func cancelChangingServer() {
+    func tokenPrefix(for host: String) -> String? { tokenPrefixes[host] }
+
+    func beginEditingServers() {
         errorMessage = nil
-        changingServer = false
+        editingServers = true
+    }
+
+    func cancelEditingServers() {
+        errorMessage = nil
+        editingServers = false
+    }
+
+    /// Point the app at a different server. Never touches any stored token — if
+    /// the target already has one it's reused immediately (no re-paste); if not,
+    /// the UI drops to the add-token state for that server.
+    func selectServer(_ rawHost: String) {
+        let host = Server.normalizeHost(rawHost)
+        editingServers = false
+        errorMessage = nil
+        guard host != serverHost else { return }
+        applyServerHost(host)          // persists, resets loaded data, re-checks token
+        if hasToken {
+            Task { await loadEverything() }
+        }
+    }
+
+    /// Add a custom server and select it. Returns an error message, or nil.
+    @discardableResult
+    func addCustomServer(name rawName: String, host rawHost: String) -> String? {
+        let host = Server.normalizeHost(rawHost)
+        guard Server.isValidHost(host) else {
+            return "Enter a valid server, like timesheets.example.org."
+        }
+        guard !knownServers.contains(where: { $0.host == host }) else {
+            return "That server is already in the list."
+        }
+        let trimmed = rawName.trimmingCharacters(in: .whitespaces)
+        customServers.append(ServerInfo(name: trimmed.isEmpty ? host : trimmed,
+                                        host: host, isBuiltIn: false))
+        persistCustomServers()
+        selectServer(host)
+        return nil
+    }
+
+    /// Remove a custom server (and its token). Built-ins can't be removed.
+    func removeCustomServer(_ host: String) {
+        guard customServers.contains(where: { $0.host == host }) else { return }
+        customServers.removeAll { $0.host == host }
+        persistCustomServers()
+        Keychain.deleteToken(for: host)
+        setTokenPrefix(nil, for: host)
+        refreshTokenStatus()
+        if host == serverHost { selectServer(AppConfig.defaultServerHost) }
+    }
+
+    /// Remove the token for one server only, leaving every other server intact.
+    func removeToken(for host: String) {
+        Keychain.deleteToken(for: host)
+        setTokenPrefix(nil, for: host)
+        if host == serverHost {
+            cachedToken = nil
+            hasToken = false
+            resetLoadedState()
+        }
+        refreshTokenStatus()
+    }
+
+    private func persistCustomServers() {
+        if let data = try? JSONEncoder().encode(customServers) {
+            UserDefaults.standard.set(data, forKey: AppConfig.customServersDefaultsKey)
+        }
+    }
+
+    private func refreshTokenStatus() {
+        serversWithToken = Set(knownServers.filter { Keychain.hasToken(for: $0.host) }.map(\.host))
+    }
+
+    private func setTokenPrefix(_ prefix: String?, for host: String) {
+        tokenPrefixes[host] = prefix
+        UserDefaults.standard.set(tokenPrefixes, forKey: AppConfig.tokenPrefixesDefaultsKey)
     }
 
     // MARK: - Default hours
@@ -172,6 +271,7 @@ final class AppState: ObservableObject {
         serverHost = host
         UserDefaults.standard.set(host, forKey: AppConfig.serverHostDefaultsKey)
         resetLoadedState()
+        needsReauth = false
         hasToken = Keychain.hasToken(for: host)
     }
 
@@ -181,14 +281,9 @@ final class AppState: ObservableObject {
 
     // MARK: - Token management
 
-    /// Set the server and validate/store a pasted token. Returns true on success.
-    func connect(server rawHost: String, token raw: String) async -> Bool {
-        guard Server.isValidHost(rawHost) else {
-            errorMessage = "Enter a valid server name, like timesheets.lkgeorge.org."
-            return false
-        }
-        applyServerHost(rawHost)
-
+    /// Validate and store a pasted token for the currently selected server.
+    /// The server judges validity (via `GET /me`); we store only on 200.
+    func connect(token raw: String) async -> Bool {
         let token = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !token.isEmpty else {
             errorMessage = "Paste a token first."
@@ -199,7 +294,7 @@ final class AppState: ObservableObject {
             return false
         }
         guard let baseURL = Server.baseURL(host: serverHost) else {
-            errorMessage = "Couldn't build a URL for that server."
+            errorMessage = "Couldn't build a URL for \(selectedServer.name)."
             return false
         }
 
@@ -213,16 +308,18 @@ final class AppState: ObservableObject {
                 errorMessage = "Couldn't save the token to the Keychain."
                 return false
             }
+            setTokenPrefix(String(token.prefix(12)), for: serverHost)
             self.me = me
             self.cachedToken = token   // seed the cache so loads don't re-read
             self.hasToken = true
             self.needsReauth = false
-            self.changingServer = false
+            self.editingServers = false
             self.errorMessage = nil
+            refreshTokenStatus()
             await loadEverything()
             return true
         } catch APIError.unauthorized {
-            errorMessage = "That token was rejected for \(serverHost). Double-check the server and that you copied the whole token."
+            errorMessage = "\(selectedServer.name) rejected that token — it may be wrong or revoked."
             return false
         } catch {
             errorMessage = (error as? APIError)?.errorDescription ?? error.localizedDescription
@@ -230,11 +327,9 @@ final class AppState: ObservableObject {
         }
     }
 
+    /// Remove the current server's token (leaves other servers untouched).
     func signOut() {
-        Keychain.deleteToken(for: serverHost)
-        cachedToken = nil
-        hasToken = false
-        resetLoadedState()
+        removeToken(for: serverHost)
     }
 
     // MARK: - Loading

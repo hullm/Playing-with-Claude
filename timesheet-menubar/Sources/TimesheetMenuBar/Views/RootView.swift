@@ -12,7 +12,9 @@ struct RootView: View {
             Divider()
 
             Group {
-                if !state.hasToken || state.needsReauth || state.changingServer {
+                if state.editingServers {
+                    ServersView()
+                } else if !state.hasToken || state.needsReauth {
                     TokenEntryView()
                 } else if state.editingDefaults {
                     DefaultsEditView()
@@ -38,8 +40,9 @@ struct RootView: View {
     }
 }
 
-/// App title.
+/// App title + which server we're pointed at.
 private struct HeaderBar: View {
+    @EnvironmentObject private var state: AppState
     var body: some View {
         HStack(spacing: 8) {
             Image(systemName: "clock.badge.checkmark")
@@ -47,9 +50,39 @@ private struct HeaderBar: View {
             Text("Time Sheets")
                 .font(.headline)
             Spacer()
+            ServerBadge(server: state.selectedServer)
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 10)
+    }
+}
+
+/// The active-server badge. Production is calm (subtle green); development is
+/// loud (solid orange) to catch attention when you're not where you expect.
+struct ServerBadge: View {
+    let server: ServerInfo
+    var body: some View {
+        Text(server.badgeLabel)
+            .font(.caption2.bold())
+            .padding(.horizontal, 7)
+            .padding(.vertical, 2)
+            .background(background)
+            .foregroundStyle(foreground)
+            .clipShape(Capsule())
+    }
+    private var background: Color {
+        switch server.badge {
+        case .prod:   return .green.opacity(0.18)
+        case .dev:    return .orange              // solid = attention
+        case .custom: return .gray.opacity(0.2)
+        }
+    }
+    private var foreground: Color {
+        switch server.badge {
+        case .prod:   return .green
+        case .dev:    return .white
+        case .custom: return .secondary
+        }
     }
 }
 
@@ -87,15 +120,15 @@ private struct FooterBar: View {
                     Button("Default hours…") { state.beginEditingDefaults() }
                 }
                 Divider()
-                Section(state.serverHost) {
+                Section(state.selectedServer.name) {
+                    Button("Servers…") { state.beginEditingServers() }
                     if let web = Server.webURL(host: state.serverHost) {
                         Link("Open Time Sheets website", destination: web)
                     }
-                    Button("Change server…") { state.beginChangingServer() }
                 }
                 if state.hasToken {
                     Divider()
-                    Button("Sign out", role: .destructive) {
+                    Button("Remove this server's token", role: .destructive) {
                         state.signOut()
                     }
                 }

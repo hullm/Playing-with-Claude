@@ -30,6 +30,31 @@ enum Server {
     }
 }
 
+/// A server the app can point at, identified by its normalized host. Tokens are
+/// stored per host, so each server keeps its own credential.
+struct ServerInfo: Codable, Equatable, Identifiable {
+    var name: String
+    var host: String
+    var isBuiltIn: Bool
+    var id: String { host }
+
+    enum Badge { case prod, dev, custom }
+    var badge: Badge {
+        switch host {
+        case AppConfig.productionHost: return .prod
+        case AppConfig.developmentHost: return .dev
+        default: return .custom
+        }
+    }
+    var badgeLabel: String {
+        switch badge {
+        case .prod: return "PROD"
+        case .dev: return "DEV"
+        case .custom: return "CUSTOM"
+        }
+    }
+}
+
 /// App-wide constants.
 enum AppConfig {
     /// Keychain service identifier. Tokens are keyed by (service, host).
@@ -38,8 +63,24 @@ enum AppConfig {
     /// UserDefaults key holding the current server hostname.
     static let serverHostDefaultsKey = "serverHost"
 
-    /// The server used until the user changes it.
-    static let defaultServerHost = "timesheets.lkgeorge.org"
+    /// UserDefaults key holding the user's custom servers ([ServerInfo] as JSON).
+    static let customServersDefaultsKey = "customServers"
+
+    /// UserDefaults key holding per-host token prefixes ([host: "tsk_…12"]).
+    /// The prefix is the public identifier the website shows — safe to store here.
+    static let tokenPrefixesDefaultsKey = "tokenPrefixes"
+
+    static let productionHost = "timesheets.lkgeorge.org"
+    static let developmentHost = "timesheets-dev.lkgeorge.org"
+
+    /// The server used until the user changes it (production).
+    static let defaultServerHost = productionHost
+
+    /// The always-present servers, production first.
+    static let builtInServers: [ServerInfo] = [
+        ServerInfo(name: "Production", host: productionHost, isBuiltIn: true),
+        ServerInfo(name: "Development", host: developmentHost, isBuiltIn: true)
+    ]
 
     /// UserDefaults key for the "show weekends" preference (default off).
     static let showWeekendsDefaultsKey = "showWeekends"

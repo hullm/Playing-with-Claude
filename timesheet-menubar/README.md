@@ -10,9 +10,14 @@ app-switcher entry.
 
 - **Auth:** you paste a personal access token once; it's stored in the macOS
   **Keychain** (never on disk in plaintext) and sent as `Authorization: Bearer tsk_…`.
-- **Server:** talks to `timesheets.lkgeorge.org` by default; enter any other
-  host (e.g. `timesheets-dev.lkgeorge.org`) on the connect screen or via
-  **Change server…** in the gear menu. Each server's token is stored separately.
+- **Multiple servers, per-server tokens:** gear → **Servers…** lists Production
+  and Development (add your own custom hosts too). Each server keeps its **own**
+  token in the Keychain, so switching just reuses the stored one — no re-pasting,
+  and switching never touches another server's token. A colored badge in the
+  header shows where you are (loud orange for **DEV**, calm green for **PROD**).
+  The Servers screen shows which servers have a token (by its 12-char prefix) and
+  lets you remove a token or a custom server. A revoked token (401) prompts to
+  replace it for that server only.
 - **At-a-glance menu bar:** the clock icon swaps to a nudge badge when a draft
   is ready to submit.
 - **Weekends hidden by default:** a "Show weekends" toggle in the gear menu
