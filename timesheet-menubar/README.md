@@ -102,9 +102,14 @@ timezone US Eastern. Notes:
   (e.g. `7:30 AM`); input is converted back to `"HH:MM"` before saving. Typing
   a time with no AM/PM is read as 24-hour, so nothing is ambiguous.
 - `GET /periods` returns `{ "periods": [...] }`; period ids are integers.
-- Editing sends the **whole day** in one `PUT`, so the server can reconcile
-  worked time and time off together. A full-day off (`offReason` + `offPortion:"full"`)
-  clears the times; a half day (`am`/`pm`) keeps the worked half.
+- A day is a list of **work periods** (`segments`, each `reg`/`ot` with its own
+  note). Hours are the **sum** of the periods, never the first-in→last-out span.
+  The editor lists every period and lets you add/remove them; saving sends the
+  whole `segments` list (it replaces the day). When the server omits `segments`
+  (older API), the editor falls back to a single Regular/Overtime pair.
+- Editing sends the **whole day** in one `PUT`, reconciling worked time and time
+  off together. A full-day off (`offReason` + `offPortion:"full"`) clears the
+  periods; a half day (`am`/`pm`) keeps the worked half.
 - `submitBlockedUntil` is a human-readable string (e.g. `"Fri Jul 17 at 3:30 PM"`),
   not a timestamp — the app shows it verbatim and disables Submit until the
   server returns `null`.

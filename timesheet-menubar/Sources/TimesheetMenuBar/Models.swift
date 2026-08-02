@@ -68,11 +68,43 @@ struct OffPortionOption: Codable, Identifiable, Equatable, Hashable {
     var id: String { value }
 }
 
+/// One work period within a day. Hours are the SUM of a day's periods, never
+/// the span from the first start to the last end.
+struct Segment: Codable, Equatable {
+    enum Kind: String, Codable { case reg, ot }
+    var kind: Kind
+    var start: String   // "HH:MM" 24-hour, or ""
+    var end: String
+    var note: String    // per-period note; may be ""
+
+    private enum CodingKeys: String, CodingKey { case kind, start, end, note }
+
+    init(kind: Kind, start: String, end: String, note: String) {
+        self.kind = kind; self.start = start; self.end = end; self.note = note
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        // Lenient kind: an unrecognized kind falls back to reg rather than throwing.
+        let raw = (try? c.decode(String.self, forKey: .kind)) ?? "reg"
+        kind = Kind(rawValue: raw) ?? .reg
+        start = (try? c.decodeIfPresent(String.self, forKey: .start)) ?? ""
+        end = (try? c.decodeIfPresent(String.self, forKey: .end)) ?? ""
+        note = (try? c.decodeIfPresent(String.self, forKey: .note)) ?? ""
+    }
+}
+
 // One day within a timesheet.
 struct Day: Codable, Identifiable, Equatable {
     let date: String        // "YYYY-MM-DD"
     let weekday: String     // "Mon"
     let isWeekend: Bool
+    // `segments` is the source of truth for worked time on the new API. It's
+    // ABSENT (nil) on the un-updated server; present ([] when no work) on the
+    // new one — so `nil` cleanly means "flat single-pair mode".
+    let segments: [Segment]?
+    // Flat fields still returned, but on the new API they are only a DISPLAY
+    // MIRROR (first-in / last-out). NEVER compute hours from them — use `hours`.
     var regStart: String    // "HH:MM" or ""
     var regEnd: String
     var otStart: String
@@ -87,7 +119,7 @@ struct Day: Codable, Identifiable, Equatable {
 
     // Defensive decoding: coerce nulls to "" so the editor always has strings.
     private enum CodingKeys: String, CodingKey {
-        case date, weekday, isWeekend, regStart, regEnd, otStart, otEnd
+        case date, weekday, isWeekend, segments, regStart, regEnd, otStart, otEnd
         case offReason, offPortion, note, hours, saved
     }
 
@@ -96,6 +128,8 @@ struct Day: Codable, Identifiable, Equatable {
         date = try c.decode(String.self, forKey: .date)
         weekday = (try? c.decode(String.self, forKey: .weekday)) ?? ""
         isWeekend = (try? c.decode(Bool.self, forKey: .isWeekend)) ?? false
+        // nil when the key is absent (old server); [] or [items] on the new one.
+        segments = (try? c.decodeIfPresent([Segment].self, forKey: .segments)) ?? nil
         regStart = (try? c.decodeIfPresent(String.self, forKey: .regStart)) ?? ""
         regEnd = (try? c.decodeIfPresent(String.self, forKey: .regEnd)) ?? ""
         otStart = (try? c.decodeIfPresent(String.self, forKey: .otStart)) ?? ""
@@ -108,10 +142,17 @@ struct Day: Codable, Identifiable, Equatable {
         saved = (try? c.decode(Bool.self, forKey: .saved)) ?? true
     }
 
+    /// True when the server sent a `segments` array (new API) for this day.
+    var supportsSegments: Bool { segments != nil }
+
+    /// The day's work periods (empty on the old API or a work-free day).
+    var workPeriods: [Segment] { segments ?? [] }
+
     var isTimeOff: Bool { !offReason.isEmpty }
 
     var hasWorkTime: Bool {
-        !(regStart.isEmpty && regEnd.isEmpty && otStart.isEmpty && otEnd.isEmpty)
+        if !workPeriods.isEmpty { return true }
+        return !(regStart.isEmpty && regEnd.isEmpty && otStart.isEmpty && otEnd.isEmpty)
     }
 }
 
@@ -153,14 +194,17 @@ struct DefaultsUpdate: Codable {
 }
 
 // PUT /timesheet/{periodId}/day  request body.
-// All fields optional except `date`; "" clears. We send the full day so the
-// server can reconcile worked time and time off in one call.
+// All fields optional except `date`. Optional Swift properties encode via
+// `encodeIfPresent`, so nil ones are omitted from the JSON. When `segments` is
+// present it is AUTHORITATIVE and replaces the day's periods; the flat fields
+// are sent instead only in single-pair fallback mode (old server).
 struct DayUpdate: Codable {
     let date: String
-    let regStart: String
-    let regEnd: String
-    let otStart: String
-    let otEnd: String
+    var segments: [Segment]?     // authoritative when present; replaces, not merges
+    var regStart: String?        // flat fallback only (omitted when segments sent)
+    var regEnd: String?
+    var otStart: String?
+    var otEnd: String?
     let offReason: String
     let offPortion: String
     let note: String

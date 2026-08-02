@@ -299,6 +299,15 @@ private struct DayRow: View {
     }
 
     private var workSummary: String {
+        // Prefer the work-period list (new API): show each period, never the
+        // misleading first-in→last-out span.
+        if !day.workPeriods.isEmpty {
+            return day.workPeriods.map { seg in
+                let range = "\(display(seg.start))–\(display(seg.end))"
+                return seg.kind == .ot ? "OT \(range)" : range
+            }.joined(separator: ", ")
+        }
+        // Flat fallback (old API): the single Regular/Overtime pair.
         var parts: [String] = []
         if !day.regStart.isEmpty || !day.regEnd.isEmpty {
             parts.append("\(display(day.regStart))–\(display(day.regEnd))")
