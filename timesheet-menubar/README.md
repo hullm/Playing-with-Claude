@@ -38,6 +38,9 @@ app-switcher entry.
   period you're looking at. The reload button still forces an immediate refresh.
 - **Launch at login:** a toggle in the gear menu (via `SMAppService`).
 
+Version history lives in [CHANGELOG.md](CHANGELOG.md). The current release is
+**1.01**; changes after it go under **1.02**.
+
 ## Requirements
 
 - macOS 13 (Ventura) or newer — `MenuBarExtra` needs it.
