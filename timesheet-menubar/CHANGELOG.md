@@ -3,7 +3,11 @@
 All notable changes to the Time Sheets menu bar app. Versions track
 `CFBundleShortVersionString` in `Info.plist` and `AppConfig.appVersion`.
 
-## [Unreleased] — 1.02
+## [Unreleased]
+
+_Nothing yet._
+
+## [1.02] — 2026-08-12
 
 ### Added
 - **A day can be off for two reasons** — e.g. a morning at a screening and an
