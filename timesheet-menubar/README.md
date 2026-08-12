@@ -121,8 +121,12 @@ timezone US Eastern. Notes:
   whole `segments` list (it replaces the day). When the server omits `segments`
   (older API), the editor falls back to a single Regular/Overtime pair.
 - Editing sends the **whole day** in one `PUT`, reconciling worked time and time
-  off together. A full-day off (`offReason` + `offPortion:"full"`) clears the
-  periods; a half day (`am`/`pm`) keeps the worked half.
+  off together. Time off is the per-portion **`off` array** (authoritative; the
+  flat `offReason`/`offPortion` are a legacy display mirror of the first portion
+  only). A day can be off for **two reasons** — one `am` and one `pm` entry, each
+  charged to its own leave bucket. A full day or both halves off clears the
+  periods; a single half keeps the worked half. On the older API (`off` absent)
+  the editor falls back to a single-reason half day via the flat pair.
 - `submitBlockedUntil` is a human-readable string (e.g. `"Fri Jul 17 at 3:30 PM"`),
   not a timestamp — the app shows it verbatim and disables Submit until the
   server returns `null`.

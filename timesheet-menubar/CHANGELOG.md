@@ -5,7 +5,13 @@ All notable changes to the Time Sheets menu bar app. Versions track
 
 ## [Unreleased] — 1.02
 
-_Nothing yet._
+### Added
+- **A day can be off for two reasons** — e.g. a morning at a screening and an
+  afternoon sick. Split days show both reasons ("Cancer Screening (am) + Sick
+  Day (pm)"), and the day editor offers an "other half" picker (Worked, or a
+  second day type) whenever a half day is chosen. Each portion's hours are
+  charged to the leave bucket its reason names. Uses the API's new per-portion
+  `off` array; the reason and portion lists stay server-driven (not hardcoded).
 
 ## [1.01] — 2026-08-03
 

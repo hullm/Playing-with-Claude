@@ -68,6 +68,15 @@ struct OffPortionOption: Codable, Identifiable, Equatable, Hashable {
     var id: String { value }
 }
 
+/// One reason a portion of a day is off. A day can now hold two — e.g. a
+/// morning at a screening (`am`) and an afternoon sick (`pm`) — and each
+/// portion's hours are charged to the leave bucket its reason names, so both
+/// must be recorded, not just the first.
+struct DayOff: Codable, Equatable, Hashable {
+    let portion: String   // "full" | "am" | "pm"
+    let reason: String    // a DayType.slug
+}
+
 /// One work period within a day. Hours are the SUM of a day's periods, never
 /// the span from the first start to the last end.
 struct Segment: Codable, Equatable {
@@ -103,14 +112,20 @@ struct Day: Codable, Identifiable, Equatable {
     // ABSENT (nil) on the un-updated server; present ([] when no work) on the
     // new one — so `nil` cleanly means "flat single-pair mode".
     let segments: [Segment]?
+    // `off` is the source of truth for time off on the new API: one entry per
+    // portion (a split day carries two). ABSENT (nil) on the old server, so nil
+    // cleanly means "flat single-reason mode". Never derive hours from it —
+    // `hours` is always server-correct.
+    let off: [DayOff]?
     // Flat fields still returned, but on the new API they are only a DISPLAY
-    // MIRROR (first-in / last-out). NEVER compute hours from them — use `hours`.
+    // MIRROR (first-in / last-out; off* name only the FIRST portion). NEVER
+    // compute hours or the full off picture from them — use `hours` / `off`.
     var regStart: String    // "HH:MM" or ""
     var regEnd: String
     var otStart: String
     var otEnd: String
-    var offReason: String   // a DayType.slug, or ""
-    var offPortion: String  // "full" | "am" | "pm", or ""
+    var offReason: String   // a DayType.slug, or "" — legacy mirror only
+    var offPortion: String  // "full" | "am" | "pm", or "" — legacy mirror only
     var note: String
     let hours: HourTotals
     let saved: Bool         // false = pre-filled default, not yet written
@@ -119,7 +134,7 @@ struct Day: Codable, Identifiable, Equatable {
 
     // Defensive decoding: coerce nulls to "" so the editor always has strings.
     private enum CodingKeys: String, CodingKey {
-        case date, weekday, isWeekend, segments, regStart, regEnd, otStart, otEnd
+        case date, weekday, isWeekend, segments, off, regStart, regEnd, otStart, otEnd
         case offReason, offPortion, note, hours, saved
     }
 
@@ -130,6 +145,7 @@ struct Day: Codable, Identifiable, Equatable {
         isWeekend = (try? c.decode(Bool.self, forKey: .isWeekend)) ?? false
         // nil when the key is absent (old server); [] or [items] on the new one.
         segments = (try? c.decodeIfPresent([Segment].self, forKey: .segments)) ?? nil
+        off = (try? c.decodeIfPresent([DayOff].self, forKey: .off)) ?? nil
         regStart = (try? c.decodeIfPresent(String.self, forKey: .regStart)) ?? ""
         regEnd = (try? c.decodeIfPresent(String.self, forKey: .regEnd)) ?? ""
         otStart = (try? c.decodeIfPresent(String.self, forKey: .otStart)) ?? ""
@@ -145,10 +161,24 @@ struct Day: Codable, Identifiable, Equatable {
     /// True when the server sent a `segments` array (new API) for this day.
     var supportsSegments: Bool { segments != nil }
 
+    /// True when the server sent the per-portion `off` array for this day.
+    var supportsOffArray: Bool { off != nil }
+
     /// The day's work periods (empty on the old API or a work-free day).
     var workPeriods: [Segment] { segments ?? [] }
 
-    var isTimeOff: Bool { !offReason.isEmpty }
+    /// Unified time-off list for display and editing: the authoritative `off`
+    /// array on the new API, else a single entry synthesized from the legacy
+    /// flat pair. Empty means the day isn't off.
+    var offList: [DayOff] {
+        if let off = off { return off }
+        if !offReason.isEmpty {
+            return [DayOff(portion: offPortion.isEmpty ? "full" : offPortion, reason: offReason)]
+        }
+        return []
+    }
+
+    var isTimeOff: Bool { !offList.isEmpty }
 
     var hasWorkTime: Bool {
         if !workPeriods.isEmpty { return true }
@@ -195,18 +225,23 @@ struct DefaultsUpdate: Codable {
 
 // PUT /timesheet/{periodId}/day  request body.
 // All fields optional except `date`. Optional Swift properties encode via
-// `encodeIfPresent`, so nil ones are omitted from the JSON. When `segments` is
-// present it is AUTHORITATIVE and replaces the day's periods; the flat fields
-// are sent instead only in single-pair fallback mode (old server).
+// `encodeIfPresent`, so nil ones are omitted from the JSON.
+//   - `segments` is AUTHORITATIVE for worked time when present (replaces, not
+//     merges); the flat reg/ot fields are the old-server fallback.
+//   - `off` is AUTHORITATIVE for time off when present (the server ignores the
+//     flat offReason/offPortion then). Sending the flat pair on a day that
+//     already has two portions is refused, so we send `off` and omit the pair
+//     whenever the server supports the array.
 struct DayUpdate: Codable {
     let date: String
     var segments: [Segment]?     // authoritative when present; replaces, not merges
+    var off: [DayOff]?           // authoritative when present; [] clears time off
     var regStart: String?        // flat fallback only (omitted when segments sent)
     var regEnd: String?
     var otStart: String?
     var otEnd: String?
-    let offReason: String
-    let offPortion: String
+    var offReason: String?       // legacy flat fallback (omitted when `off` sent)
+    var offPortion: String?
     let note: String
 }
 

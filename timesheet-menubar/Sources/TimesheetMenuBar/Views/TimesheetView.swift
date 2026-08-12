@@ -104,11 +104,15 @@ struct TimesheetView: View {
         let today = state.today
         let days = visibleDays(ts)
         let hasToday = days.contains { $0.date == today }
+        // slug → human label for time-off reasons (admin-managed; never hardcoded).
+        let reasonLabels = Dictionary(ts.dayTypes.map { ($0.slug, $0.label) },
+                                      uniquingKeysWith: { first, _ in first })
         return ScrollViewReader { proxy in
             ScrollView {
                 VStack(spacing: 0) {
                     ForEach(Array(days.enumerated()), id: \.element.date) { index, day in
-                        DayRow(day: day, editable: ts.editable, isToday: day.date == today) {
+                        DayRow(day: day, editable: ts.editable, isToday: day.date == today,
+                               reasonLabels: reasonLabels) {
                             state.errorMessage = nil
                             editingDay = day
                         }
@@ -218,6 +222,7 @@ private struct DayRow: View {
     let day: Day
     let editable: Bool
     let isToday: Bool
+    let reasonLabels: [String: String]
     let onTap: () -> Void
 
     var body: some View {
@@ -301,23 +306,37 @@ private struct DayRow: View {
     /// A day that is partly worked and partly time off (e.g. a half day).
     private var isSplitDay: Bool { day.hours.off > 0 && workedHours > 0 }
 
-    /// "3.5h worked + 3.5h off — personal_day (PM)" — reads with the total on
-    /// the right as the sum. Ordered chronologically: an AM off leads with the
-    /// time off, a PM off leads with the worked morning.
+    private func label(_ slug: String) -> String {
+        reasonLabels[slug] ?? slug
+    }
+
+    /// "Cancer Screening (am)" style tag for one off portion; a full-day
+    /// portion shows just the reason.
+    private func offTag(_ entry: DayOff) -> String {
+        entry.portion.isEmpty || entry.portion == "full"
+            ? label(entry.reason)
+            : "\(label(entry.reason)) (\(entry.portion.lowercased()))"
+    }
+
+    /// All off reasons joined — "Cancer Screening (am) + Sick Day (pm)".
+    private var offDescriptor: String {
+        day.offList.map(offTag).joined(separator: " + ")
+    }
+
+    /// "3.5h worked + 3.5h off — Sick Day (pm)" — reads with the total on the
+    /// right as the sum. Ordered chronologically: an AM off leads with the time
+    /// off, a PM off leads with the worked morning. A split day is worked, so it
+    /// has exactly one off portion.
     private var splitSummary: String {
-        let reason = day.offReason.isEmpty ? "time off" : day.offReason
-        let portion = day.offPortion.isEmpty || day.offPortion == "full"
-            ? "" : " (\(day.offPortion.uppercased()))"
         let worked = "\(workedHours.hoursLabel)h worked"
         let off = "\(day.hours.off.hoursLabel)h off"
-        let offFirst = day.offPortion.lowercased() == "am"   // morning off comes first
+        let offFirst = day.offList.first?.portion.lowercased() == "am"  // morning off first
         let parts = offFirst ? "\(off) + \(worked)" : "\(worked) + \(off)"
-        return "\(parts) — \(reason)\(portion)"
+        return "\(parts) — \(offDescriptor)"
     }
 
     private var timeOffSummary: String {
-        let portion = day.offPortion.isEmpty || day.offPortion == "full" ? "" : " (\(day.offPortion.uppercased()))"
-        return "Time off — \(day.offReason)\(portion)"
+        "Time off — \(offDescriptor)"
     }
 
     private var workSummary: String {
