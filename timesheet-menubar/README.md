@@ -38,8 +38,8 @@ app-switcher entry.
   period you're looking at. The reload button still forces an immediate refresh.
 - **Launch at login:** a toggle in the gear menu (via `SMAppService`).
 
-Version history lives in [CHANGELOG.md](CHANGELOG.md). The current release is
-**1.02**; changes after it go under the next version.
+Version history lives in [CHANGELOG.md](CHANGELOG.md), using semantic
+versioning (MAJOR.MINOR.PATCH). The current release is **1.0.2**.
 
 ## Requirements
 

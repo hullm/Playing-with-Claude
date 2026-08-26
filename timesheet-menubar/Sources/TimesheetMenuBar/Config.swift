@@ -93,5 +93,5 @@ enum AppConfig {
     static let tokenPrefix = "tsk_"
 
     /// Displayed app version (keep in sync with Info.plist CFBundleShortVersionString).
-    static let appVersion = "1.02"
+    static let appVersion = "1.0.2"
 }

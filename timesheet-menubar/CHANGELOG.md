@@ -1,13 +1,14 @@
 # Changelog
 
-All notable changes to the Time Sheets menu bar app. Versions track
+All notable changes to the Time Sheets menu bar app. Versions follow
+[semantic versioning](https://semver.org) (MAJOR.MINOR.PATCH) and track
 `CFBundleShortVersionString` in `Info.plist` and `AppConfig.appVersion`.
 
 ## [Unreleased]
 
 _Nothing yet._
 
-## [1.02] — 2026-08-12
+## [1.0.2] — 2026-08-12
 
 ### Added
 - **A day can be off for two reasons** — e.g. a morning at a screening and an
@@ -41,9 +42,9 @@ _Nothing yet._
   notes now belong to the block they describe. Existing day notes were relocated
   to the first work or off block server-side.
 
-## [1.01] — 2026-08-03
+## [1.0.1] — 2026-08-03
 
-Everything landed since 1.0.
+Everything landed since 1.0.0.
 
 ### Added
 - **Multiple work periods per day (split days)** — log more than one work
@@ -69,7 +70,7 @@ Everything landed since 1.0.
   long-running session.
 - **Stray scroll in the day list** when weekends are hidden.
 
-## [1.0] — 2026-07-19
+## [1.0.0] — 2026-07-19
 
 - Initial release: menu bar app for Time Sheets — view the current pay
   period, edit and save day hours, submit, per-day defaults, launch at login.
