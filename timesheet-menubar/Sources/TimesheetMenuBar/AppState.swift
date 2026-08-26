@@ -46,6 +46,10 @@ final class AppState: ObservableObject {
     @Published private(set) var me: Me?
     @Published private(set) var periods: [Period] = []
     @Published private(set) var timesheet: Timesheet?
+    /// Admin-managed catalog of work kinds and off reasons (GET /day-types).
+    /// nil until loaded, or on an older server without the endpoint — callers
+    /// fall back to the timesheet's `dayTypes`/`offPortions`.
+    @Published private(set) var dayTypesCatalog: DayTypesResponse?
 
     // UI status
     @Published private(set) var isLoading = false
@@ -379,9 +383,12 @@ final class AppState: ObservableObject {
         do {
             async let meResult = client.me()
             async let periodsResult = client.periods()
+            // Optional: absent on an older server; never fail the load over it.
+            async let catalogResult = client.dayTypes()
             self.me = try await meResult
             let periods = try await periodsResult
             self.periods = periods
+            self.dayTypesCatalog = try? await catalogResult
 
             if let current = periods.first(where: { $0.isCurrent }) ?? periods.first {
                 self.timesheet = try await client.timesheet(periodID: current.id)

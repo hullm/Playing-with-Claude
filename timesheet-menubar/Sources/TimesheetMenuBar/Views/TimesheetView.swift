@@ -104,9 +104,12 @@ struct TimesheetView: View {
         let today = state.today
         let days = visibleDays(ts)
         let hasToday = days.contains { $0.date == today }
-        // slug → human label for time-off reasons (admin-managed; never hardcoded).
-        let reasonLabels = Dictionary(ts.dayTypes.map { ($0.slug, $0.label) },
+        // slug → human label for time-off reasons (admin-managed; never
+        // hardcoded). Prefer the /day-types catalog (covers retired reasons),
+        // falling back to the timesheet's list.
+        var reasonLabels = Dictionary(ts.dayTypes.map { ($0.slug, $0.label) },
                                       uniquingKeysWith: { first, _ in first })
+        for t in state.dayTypesCatalog?.off ?? [] { reasonLabels[t.slug] = t.label }
         return ScrollViewReader { proxy in
             ScrollView {
                 VStack(spacing: 0) {
@@ -286,13 +289,17 @@ private struct DayRow: View {
         .disabled(!editable)
     }
 
+    // Work and time off can coexist (a call-out on a sick day), so show both
+    // when both are present. The right-aligned total carries the summed hours.
     @ViewBuilder private var summaryLine: some View {
-        if isSplitDay {
-            Text(splitSummary)
-        } else if day.isTimeOff {
-            Text(timeOffSummary)
-        } else if day.hasWorkTime {
-            Text(workSummary)
+        let work = workText
+        let off = offText
+        if !work.isEmpty && !off.isEmpty {
+            Text("\(work) · off: \(off)")
+        } else if !off.isEmpty {
+            Text("Time off — \(off)")
+        } else if !work.isEmpty {
+            Text(work)
         } else if day.isWeekend {
             Text("Weekend")
         } else {
@@ -300,55 +307,17 @@ private struct DayRow: View {
         }
     }
 
-    /// Hours worked that day (reg + ot), straight from `hours` — never a span.
-    private var workedHours: Double { day.hours.reg + day.hours.ot }
+    private func label(_ slug: String) -> String { reasonLabels[slug] ?? slug }
 
-    /// A day that is partly worked and partly time off (e.g. a half day).
-    private var isSplitDay: Bool { day.hours.off > 0 && workedHours > 0 }
-
-    private func label(_ slug: String) -> String {
-        reasonLabels[slug] ?? slug
-    }
-
-    /// "Cancer Screening (am)" style tag for one off portion; a full-day
-    /// portion shows just the reason.
-    private func offTag(_ entry: DayOff) -> String {
-        entry.portion.isEmpty || entry.portion == "full"
-            ? label(entry.reason)
-            : "\(label(entry.reason)) (\(entry.portion.lowercased()))"
-    }
-
-    /// All off reasons joined — "Cancer Screening (am) + Sick Day (pm)".
-    private var offDescriptor: String {
-        day.offList.map(offTag).joined(separator: " + ")
-    }
-
-    /// "3.5h worked + 3.5h off — Sick Day (pm)" — reads with the total on the
-    /// right as the sum. Ordered chronologically: an AM off leads with the time
-    /// off, a PM off leads with the worked morning. A split day is worked, so it
-    /// has exactly one off portion.
-    private var splitSummary: String {
-        let worked = "\(workedHours.hoursLabel)h worked"
-        let off = "\(day.hours.off.hoursLabel)h off"
-        let offFirst = day.offList.first?.portion.lowercased() == "am"  // morning off first
-        let parts = offFirst ? "\(off) + \(worked)" : "\(worked) + \(off)"
-        return "\(parts) — \(offDescriptor)"
-    }
-
-    private var timeOffSummary: String {
-        "Time off — \(offDescriptor)"
-    }
-
-    private var workSummary: String {
-        // Prefer the work-period list (new API): show each period, never the
-        // misleading first-in→last-out span.
+    /// Work ranges from the segment list (new API), else the flat pair (old
+    /// API). Never the misleading first-in→last-out span. "" when no work.
+    private var workText: String {
         if !day.workPeriods.isEmpty {
             return day.workPeriods.map { seg in
                 let range = "\(display(seg.start))–\(display(seg.end))"
                 return seg.kind == .ot ? "OT \(range)" : range
             }.joined(separator: ", ")
         }
-        // Flat fallback (old API): the single Regular/Overtime pair.
         var parts: [String] = []
         if !day.regStart.isEmpty || !day.regEnd.isEmpty {
             parts.append("\(display(day.regStart))–\(display(day.regEnd))")
@@ -357,6 +326,21 @@ private struct DayRow: View {
             parts.append("OT \(display(day.otStart))–\(display(day.otEnd))")
         }
         return parts.joined(separator: "  ")
+    }
+
+    /// Off blocks joined: "Sick 8:00–10:00" (timed), "Personal Day (am) + Cancer
+    /// Screening (pm)" (policy portions), or just the reason for a full day.
+    private var offText: String {
+        day.offList.map { e in
+            switch e.portion {
+            case "timed":
+                return "\(label(e.reason)) \(display(e.start ?? ""))–\(display(e.end ?? ""))"
+            case "am", "pm":
+                return "\(label(e.reason)) (\(e.portion))"
+            default:
+                return label(e.reason)
+            }
+        }.joined(separator: " + ")
     }
 
     private func display(_ s: String) -> String {

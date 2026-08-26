@@ -12,10 +12,23 @@ _Nothing yet._
 ### Added
 - **A day can be off for two reasons** — e.g. a morning at a screening and an
   afternoon sick. Split days show both reasons ("Cancer Screening (am) + Sick
-  Day (pm)"), and the day editor offers an "other half" picker (Worked, or a
-  second day type) whenever a half day is chosen. Each portion's hours are
-  charged to the leave bucket its reason names. Uses the API's new per-portion
-  `off` array; the reason and portion lists stay server-driven (not hardcoded).
+  Day (pm)"). Each portion's hours are charged to the leave bucket its reason
+  names. Uses the API's per-portion `off` array.
+- **Time off is now a list of blocks** in the day editor — add/remove rows,
+  each a reason plus **Full / AM / PM / Timed**. **Timed** off carries real
+  start→end times and pays clock hours (a 2-hour appointment), versus
+  Full/AM/PM which pay policy hours.
+- **Work can coexist with an off day** — log a call-out OT on a sick day. The
+  work section is no longer cleared or dimmed by time off (the server refuses
+  only work that overlaps the off hours, surfaced inline).
+- **Server-driven day types** via `GET /day-types` — work kinds and off reasons
+  come from the admin-managed catalog; retired reasons still label old sheets
+  but aren't offered when creating. Falls back to the timesheet's list if the
+  endpoint is absent.
+
+### Changed
+- The day list shows work and time off together, with timed off showing its
+  hours (e.g. `10:00–2:00, OT 6:00–8:00 · off: Sick 8:00–10:00`).
 
 ## [1.01] — 2026-08-03
 

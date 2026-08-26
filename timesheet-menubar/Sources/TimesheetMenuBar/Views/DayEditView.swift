@@ -3,18 +3,15 @@ import SwiftUI
 /// Editor for a single day. Sends `PUT /timesheet/{id}/day` and adopts the
 /// refreshed card the server returns.
 ///
-/// Two modes, chosen by whether the server sent a `segments` array:
-///  - Segments mode (new API): a day is a LIST of work periods. Hours are the
-///    sum of the periods, never the span. You can add/edit/remove periods and
-///    give each its own note.
-///  - Flat fallback (old API, `segments` absent): the original single Regular +
-///    Overtime pair, with the add-a-period affordance hidden.
+/// A day is a list of typed blocks: work (`segments`, reg/ot) and absences
+/// (`off`, each a reason + a portion). The two are independent — a day can be
+/// off AND carry work outside the off hours (a call-out on a sick day).
 ///
-/// Time off is shared by both modes: a full-day off clears worked time; a
-/// half-day off (am/pm) either records the worked half OR, via the "other half"
-/// picker, marks that half off for a second reason (a fully-off day, each half
-/// charged to its own leave bucket). The two-reason path needs the new `off`
-/// array; on the old server the other-half picker is hidden.
+///  - New API (`segments`/`off` present): a list of work periods plus a list of
+///    off blocks. Each off block is Full / AM / PM (policy hours, no times) or
+///    Timed (clock hours, with start→end).
+///  - Old API (both absent): the original single Regular/Overtime pair with one
+///    time-off reason + Full/AM/PM amount, where a full day clears worked time.
 struct DayEditView: View {
     @EnvironmentObject private var state: AppState
     let day: Day
@@ -22,45 +19,65 @@ struct DayEditView: View {
 
     // Shared state
     @State private var note = ""
-    @State private var offReason = ""     // "" = none, else a DayType.slug (first portion)
-    @State private var offPortion = "full"
-    // On a half day, what the OTHER half is: "" = Worked, else a DayType.slug.
-    // Non-empty means the day is off for two different reasons.
-    @State private var otherHalfReason = ""
     @State private var saving = false
     @State private var loaded = false     // true once the initial load has settled
 
-    // Segments mode
+    // Segments mode (work)
     @State private var periods: [EditablePeriod] = []
 
-    // Flat fallback mode
+    // Flat fallback mode (work)
     @State private var regStart = ""
     @State private var regEnd = ""
     @State private var otStart = ""
     @State private var otEnd = ""
 
+    // Time off — new API: a list of blocks.
+    @State private var offBlocks: [EditableOff] = []
+    // Time off — old API: a single reason + amount.
+    @State private var offReason = ""     // "" = none, else a DayType.slug
+    @State private var offPortion = "full"
+
     private var usesSegments: Bool { day.supportsSegments }
     private var usesOffArray: Bool { day.supportsOffArray }
-    private var dayTypes: [DayType] { state.timesheet?.dayTypes ?? [] }
-    private var offPortions: [OffPortionOption] { state.timesheet?.offPortions ?? [] }
 
-    /// A half-day off is chosen (am or pm), so the other half is in play.
-    private var isHalfOff: Bool {
-        !offReason.isEmpty && (offPortion == "am" || offPortion == "pm")
-    }
-    /// The complement of the chosen half.
-    private var otherHalf: String { offPortion == "am" ? "pm" : "am" }
-    /// The whole day is off: a full-day reason, or both halves have a reason.
-    private var isWhollyOff: Bool {
-        (!offReason.isEmpty && offPortion == "full") || (isHalfOff && !otherHalfReason.isEmpty)
-    }
-
-    private func portionLabel(_ value: String) -> String {
-        offPortions.first { $0.value == value }?.label ?? value.uppercased()
+    // Reason/label sources. Prefer the /day-types catalog; fall back to the
+    // timesheet's list. Offer only active reasons; label lookups cover retired
+    // ones so an old sheet still renders.
+    private var offTypesForEntry: [OffType] {
+        if let cat = state.dayTypesCatalog { return cat.off.filter { $0.active } }
+        return (state.timesheet?.dayTypes ?? []).map { OffType(slug: $0.slug, label: $0.label, active: true) }
     }
     private func reasonLabel(_ slug: String) -> String {
-        dayTypes.first { $0.slug == slug }?.label ?? slug
+        if let t = state.dayTypesCatalog?.off.first(where: { $0.slug == slug }) { return t.label }
+        if let d = state.timesheet?.dayTypes.first(where: { $0.slug == slug }) { return d.label }
+        return slug
     }
+    private var serverPortions: [OffPortionOption] { state.timesheet?.offPortions ?? [] }
+
+    /// Full / AM / PM / Timed with labels (server wording where available).
+    private var portionOptions: [OffPortionOption] {
+        var opts = ["full", "am", "pm"].map { v in
+            OffPortionOption(value: v, label: serverPortions.first { $0.value == v }?.label ?? defaultPortionLabel(v))
+        }
+        opts.append(OffPortionOption(value: "timed", label: "Timed"))
+        return opts
+    }
+    private func defaultPortionLabel(_ v: String) -> String {
+        switch v {
+        case "full": return "Full day"
+        case "am": return "Morning"
+        case "pm": return "Afternoon"
+        case "timed": return "Timed"
+        default: return v.uppercased()
+        }
+    }
+
+    // Legacy (old-server) helpers.
+    private var isFullDayOffLegacy: Bool { !offReason.isEmpty && offPortion == "full" }
+    private var isHalfOffLegacy: Bool { !offReason.isEmpty && (offPortion == "am" || offPortion == "pm") }
+    /// Dim/disable the work section only on the old server's full-day off, where
+    /// work and off can't coexist. The new API never dims — work is independent.
+    private var dimWork: Bool { !usesOffArray && isFullDayOffLegacy }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -69,10 +86,10 @@ struct DayEditView: View {
             Group {
                 if usesSegments { workPeriodsSection } else { flatWorkSection }
             }
-            .opacity(isWhollyOff ? 0.5 : 1)
+            .opacity(dimWork ? 0.5 : 1)
 
             Divider()
-            timeOffSection
+            if usesOffArray { offBlocksSection } else { legacyOffSection }
             noteField
 
             if let error = state.errorMessage {
@@ -99,7 +116,7 @@ struct DayEditView: View {
         .onAppear {
             loadFromDay()
             // Let the initial load settle before honoring onChange auto-fills,
-            // so opening an existing half-day doesn't overwrite its saved times.
+            // so opening an existing day doesn't overwrite its saved times.
             DispatchQueue.main.async { loaded = true }
         }
     }
@@ -128,9 +145,8 @@ struct DayEditView: View {
                 PeriodRow(period: $period) { remove(period.id) }
             }
 
-            if !isWhollyOff {
+            if !dimWork {
                 Button {
-                    // "another" only once there's a first period (requirement 3).
                     periods.append(EditablePeriod(kind: .reg, start: "", end: "", note: ""))
                 } label: {
                     Label(periods.isEmpty ? "Add work period" : "Add another work period",
@@ -146,78 +162,95 @@ struct DayEditView: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
 
-            Text(isWhollyOff
+            Text(dimWork
                  ? "This day is fully off — worked time is cleared automatically."
                  : "Each period is paid on its own — gaps between them aren't.")
                 .font(.caption2).foregroundStyle(.secondary)
         }
-        .disabled(isWhollyOff)
+        .disabled(dimWork)
     }
 
     /// Old API fallback: one Regular + one Overtime pair.
     private var flatWorkSection: some View {
         VStack(alignment: .leading, spacing: 8) {
             TimeRange(title: "Regular", start: $regStart, end: $regEnd)
-                .disabled(isWhollyOff)
+                .disabled(dimWork)
             TimeRange(title: "Overtime", start: $otStart, end: $otEnd)
-                .disabled(isWhollyOff)
-            Text(isWhollyOff
+                .disabled(dimWork)
+            Text(dimWork
                  ? "This day is fully off — worked times are cleared automatically."
                  : "Enter times like 7:30 AM. Leave blank to clear.")
                 .font(.caption2).foregroundStyle(.secondary)
         }
     }
 
-    private var timeOffSection: some View {
+    /// New API: time off is a list of blocks (reason + Full/AM/PM/Timed).
+    private var offBlocksSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Time off").font(.caption).foregroundStyle(.secondary)
+
+            ForEach($offBlocks) { $block in
+                OffRow(block: $block,
+                       reasons: offTypesForEntry,
+                       reasonLabel: reasonLabel,
+                       portions: portionOptions) { removeOff(block.id) }
+            }
+
+            Button {
+                offBlocks.append(EditableOff(
+                    reason: offTypesForEntry.first?.slug ?? "", portion: "full", start: "", end: ""))
+            } label: {
+                Label(offBlocks.isEmpty ? "Add time off" : "Add another time off", systemImage: "plus")
+            }
+            .buttonStyle(.borderless)
+            .font(.callout)
+
+            if let msg = offValidationMessage {
+                Text(msg).font(.caption2).foregroundStyle(.red)
+                    .fixedSize(horizontal: false, vertical: true)
+            } else if !offBlocks.isEmpty {
+                Text("Work outside these hours is fine; work inside them is refused by the server.")
+                    .font(.caption2).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        // A single half day with no work yet fills the worked half (kept as a
+        // convenience; never overrides work you've entered).
+        .onChange(of: offBlocks) { _ in
+            guard loaded else { return }
+            autoFillWorkedHalfIfNeeded()
+        }
+    }
+
+    /// Old API: a single reason + Full/AM/PM amount, with the worked half filled
+    /// for an am/pm choice and worked time cleared for a full day.
+    private var legacyOffSection: some View {
         VStack(alignment: .leading, spacing: 8) {
             Picker("Time off", selection: $offReason) {
                 Text("None").tag("")
-                ForEach(dayTypes) { type in
+                ForEach(offTypesForEntry) { type in
                     Text(type.label).tag(type.slug)
                 }
             }
-            if !offReason.isEmpty && !offPortions.isEmpty {
+            let portions = serverPortions.filter { $0.value != "timed" }
+            if !offReason.isEmpty && !portions.isEmpty {
                 Picker("Amount", selection: $offPortion) {
-                    ForEach(offPortions) { p in Text(p.label).tag(p.value) }
+                    ForEach(portions) { p in Text(p.label).tag(p.value) }
                 }
                 .pickerStyle(.segmented)
-
-                // On a half day, the other half is Worked by default, or off for
-                // a second reason — the whole "two reasons in one day" interaction.
-                if isHalfOff && usesOffArray {
-                    Picker(portionLabel(otherHalf), selection: $otherHalfReason) {
-                        Text("Worked").tag("")
-                        ForEach(dayTypes) { type in
-                            Text(type.label).tag(type.slug)
-                        }
-                    }
-                    Text(otherHalfReason.isEmpty
-                         ? "Worked half filled in from your standard hours — edit if needed."
-                         : "Fully off: \(reasonLabel(offReason)) (\(offPortion.uppercased())) + \(reasonLabel(otherHalfReason)) (\(otherHalf.uppercased())).")
-                        .font(.caption2).foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                } else if offPortion == "am" || offPortion == "pm" {
-                    // Old server (no `off` array): single-reason half day only.
+                if offPortion == "am" || offPortion == "pm" {
                     Text("Worked half filled in from your standard hours — edit if needed.")
                         .font(.caption2).foregroundStyle(.secondary)
                 }
             }
         }
-        // Keep the worked half in sync with the off choice (only after load, so
-        // opening an existing day doesn't clobber its saved times).
-        .onChange(of: offReason) { reason in
+        .onChange(of: offReason) { _ in
             guard loaded else { return }
-            if reason.isEmpty { otherHalfReason = "" }
-            syncWorkForOff()
+            legacySyncWork()
         }
-        .onChange(of: offPortion) { portion in
+        .onChange(of: offPortion) { _ in
             guard loaded else { return }
-            if portion == "full" { otherHalfReason = "" }
-            syncWorkForOff()
-        }
-        .onChange(of: otherHalfReason) { _ in
-            guard loaded else { return }
-            syncWorkForOff()
+            legacySyncWork()
         }
     }
 
@@ -230,11 +263,16 @@ struct DayEditView: View {
         }
     }
 
-    // MARK: - Logic
+    // MARK: - Validation
 
     private var isValid: Bool {
+        if usesOffArray { return workIsValid && offValidationMessage == nil }
+        if isFullDayOffLegacy { return true }   // legacy: work irrelevant
+        return workIsValid
+    }
+
+    private var workIsValid: Bool {
         if usesSegments {
-            if isWhollyOff { return true }
             for p in periods {
                 guard TimeString.isValid(p.start), TimeString.isValid(p.end) else { return false }
                 if p.start.isEmpty != p.end.isEmpty { return false }  // both or neither
@@ -248,10 +286,40 @@ struct DayEditView: View {
         }
     }
 
-    /// Non-nil when two work periods of the SAME kind overlap (reg-vs-reg or
-    /// ot-vs-ot); the message names the clashing pair. Matches the server rule
-    /// so the user is stopped before a 422. Touching ends (11–2 after 8–11) are
-    /// allowed.
+    /// Client-side mirror of the server's off rules, so the user is guided
+    /// before a 422. (Work-vs-off overlap is left to the server — it needs the
+    /// resolved hours.)
+    private var offValidationMessage: String? {
+        guard !offBlocks.isEmpty else { return nil }
+        if offBlocks.contains(where: { $0.reason.isEmpty }) {
+            return "Choose a reason for each time-off row."
+        }
+        let fulls = offBlocks.filter { $0.portion == "full" }.count
+        if fulls > 1 || (fulls == 1 && offBlocks.count > 1) {
+            return "A full day off is the whole day — remove the other time-off rows."
+        }
+        if offBlocks.filter({ $0.portion == "am" }).count > 1 { return "Only one morning (AM) off per day." }
+        if offBlocks.filter({ $0.portion == "pm" }).count > 1 { return "Only one afternoon (PM) off per day." }
+        let hasTimed = offBlocks.contains { $0.portion == "timed" }
+        let hasPolicy = offBlocks.contains { ["full", "am", "pm"].contains($0.portion) }
+        if hasTimed && hasPolicy {
+            return "Use either half/full-day off or specific hours on a day — not both."
+        }
+        for b in offBlocks where b.portion == "timed" {
+            guard TimeString.isValid(b.start), TimeString.isValid(b.end),
+                  !b.start.isEmpty, !b.end.isEmpty else {
+                return "Enter a start and end time for the timed time off."
+            }
+            if let s = TimeString.parse24(b.start).flatMap(TimeString.minutes),
+               let e = TimeString.parse24(b.end).flatMap(TimeString.minutes), e <= s {
+                return "Timed time off must end after it starts."
+            }
+        }
+        return nil
+    }
+
+    /// Non-nil when two work periods of the SAME kind overlap. Matches the
+    /// server rule so the user is stopped before a 422. Touching ends allowed.
     private var overlapMessage: String? {
         for kind in [Segment.Kind.reg, .ot] {
             let ranges = periods
@@ -265,8 +333,6 @@ struct DayEditView: View {
                 }
                 .sorted { $0.start < $1.start }
 
-            // Sweep by start; if a period begins before the furthest end so far,
-            // it overlaps the period that set that end.
             var maxEnd = -1
             var maxLabel = ""
             for r in ranges {
@@ -279,31 +345,17 @@ struct DayEditView: View {
         return nil
     }
 
+    // MARK: - Mutation
+
     private func remove(_ id: EditablePeriod.ID) {
         periods.removeAll { $0.id == id }
+    }
+    private func removeOff(_ id: EditableOff.ID) {
+        offBlocks.removeAll { $0.id == id }
     }
 
     private func loadFromDay() {
         note = day.note
-
-        // Reconstruct the off pickers from the unified list. A split day is
-        // presented AM-first: the AM reason is primary, the PM reason is "other".
-        let list = day.offList
-        if list.isEmpty {
-            offReason = ""
-            offPortion = offPortions.first?.value ?? "full"
-            otherHalfReason = ""
-        } else if list.count == 1 {
-            offReason = list[0].reason
-            offPortion = list[0].portion.isEmpty ? "full" : list[0].portion
-            otherHalfReason = ""
-        } else {
-            let am = list.first { $0.portion == "am" }
-            let pm = list.first { $0.portion == "pm" }
-            offPortion = "am"
-            offReason = am?.reason ?? list[0].reason
-            otherHalfReason = pm?.reason ?? list[1].reason
-        }
 
         if usesSegments {
             periods = day.workPeriods.map {
@@ -318,11 +370,25 @@ struct DayEditView: View {
             otStart = TimeString.display12(day.otStart)
             otEnd = TimeString.display12(day.otEnd)
         }
+
+        if usesOffArray {
+            offBlocks = day.offList.map { e in
+                EditableOff(reason: e.reason,
+                            portion: e.portion.isEmpty ? "full" : e.portion,
+                            start: e.start.map(TimeString.display12) ?? "",
+                            end: e.end.map(TimeString.display12) ?? "")
+            }
+        } else if let first = day.offList.first {
+            offReason = first.reason
+            offPortion = first.portion.isEmpty ? "full" : first.portion
+        } else {
+            offReason = ""
+            offPortion = serverPortions.first?.value ?? "full"
+        }
         state.errorMessage = nil
     }
 
-    /// The standard workday (24-hour "HH:MM") used to split a half day: prefer
-    /// the period's defaults, else the day's own regular times.
+    /// The standard workday (24-hour "HH:MM") used to split a half day.
     private var workday: (start: String, end: String)? {
         if let d = state.timesheet?.defaults, !d.regStart.isEmpty, !d.regEnd.isEmpty {
             return (d.regStart, d.regEnd)
@@ -334,9 +400,7 @@ struct DayEditView: View {
     }
 
     /// Fill the worked half for an AM/PM off. "am" = morning off (work the
-    /// afternoon); "pm" = afternoon off (work the morning). In segments mode this
-    /// sets a single reg period when there's room; in flat mode it fills reg
-    /// start/end. Full day and unknown portions are handled by save (clears).
+    /// afternoon); "pm" = afternoon off (work the morning).
     private func applyHalfDay(_ portion: String) {
         guard portion == "am" || portion == "pm",
               let wd = workday,
@@ -358,62 +422,65 @@ struct DayEditView: View {
                 periods[0].start = startDisp
                 periods[0].end = endDisp
             }
-            // Several periods already → leave them to the user.
         } else {
             regStart = startDisp
             regEnd = endDisp
         }
     }
 
-    /// Keep worked time consistent with the off choice: a wholly-off day clears
-    /// it (requirement 4), a half-off-with-worked day fills the worked half.
-    private func syncWorkForOff() {
-        if isWhollyOff {
-            clearWork()
-        } else if isHalfOff {
+    /// New API convenience: a single AM/PM off block with no work yet fills the
+    /// worked half. Never touches work you've already entered.
+    private func autoFillWorkedHalfIfNeeded() {
+        guard offBlocks.count == 1, let b = offBlocks.first,
+              b.portion == "am" || b.portion == "pm" else { return }
+        let hasWork = usesSegments ? !periods.isEmpty : !(regStart.isEmpty && regEnd.isEmpty)
+        guard !hasWork else { return }
+        applyHalfDay(b.portion)
+    }
+
+    /// Old API: clear work on a full day off, fill the worked half on am/pm.
+    private func legacySyncWork() {
+        if isFullDayOffLegacy {
+            if usesSegments { periods = [] } else { regStart = ""; regEnd = ""; otStart = ""; otEnd = "" }
+        } else if isHalfOffLegacy {
             applyHalfDay(offPortion)
         }
-        // No off (or old-server single half already handled) → leave work as-is.
     }
 
-    private func clearWork() {
-        if usesSegments {
-            periods = []
-        } else {
-            regStart = ""; regEnd = ""; otStart = ""; otEnd = ""
-        }
-    }
-
-    /// The authoritative `off` array for the new API. Empty when the day isn't
-    /// off; one entry for a full day or a single half; two (am then pm) when
-    /// both halves are off for different reasons.
-    private func computeOffEntries() -> [DayOff] {
-        guard !offReason.isEmpty else { return [] }
-        if offPortion == "full" { return [DayOff(portion: "full", reason: offReason)] }
-        let primary = DayOff(portion: offPortion, reason: offReason)
-        guard !otherHalfReason.isEmpty else { return [primary] }
-        let other = DayOff(portion: otherHalf, reason: otherHalfReason)
-        return offPortion == "am" ? [primary, other] : [other, primary]
-    }
+    // MARK: - Save
 
     private func save() {
         guard !saving else { return }
         saving = true
 
         let dayNote = note.trimmingCharacters(in: .whitespacesAndNewlines)
-        let whollyOff = isWhollyOff
 
-        // Time off: prefer the authoritative `off` array; fall back to the flat
-        // pair only on the old server. When we send `off`, the flat pair is
-        // omitted (the server rejects it on a two-portion day).
-        let offArray: [DayOff]? = usesOffArray ? computeOffEntries() : nil
-        let flatReason: String? = usesOffArray ? nil : offReason
-        let flatPortion: String? = usesOffArray ? nil : (offReason.isEmpty ? "" : offPortion)
+        // Time off: authoritative `off` array on the new API; flat pair on the old.
+        let offArray: [DayOff]?
+        let flatReason: String?
+        let flatPortion: String?
+        if usesOffArray {
+            offArray = offBlocks.map { b in
+                let timed = b.portion == "timed"
+                return DayOff(portion: b.portion, reason: b.reason,
+                              start: timed ? (TimeString.parse24(b.start) ?? "") : nil,
+                              end: timed ? (TimeString.parse24(b.end) ?? "") : nil)
+            }
+            flatReason = nil
+            flatPortion = nil
+        } else {
+            offArray = nil
+            flatReason = offReason
+            flatPortion = offReason.isEmpty ? "" : offPortion
+        }
+
+        // Work is independent of off on the new API; only a legacy full-day off
+        // clears it.
+        let clearWork = !usesOffArray && isFullDayOffLegacy
 
         let update: DayUpdate
         if usesSegments {
-            // Send the whole list; it replaces the day. A wholly-off day clears it.
-            let segments = whollyOff ? [] : periods.compactMap { $0.toSegment() }
+            let segments = clearWork ? [] : periods.compactMap { $0.toSegment() }
             update = DayUpdate(
                 date: day.date,
                 segments: segments,
@@ -426,10 +493,10 @@ struct DayEditView: View {
                 date: day.date,
                 segments: nil,
                 off: offArray,
-                regStart: whollyOff ? "" : (TimeString.parse24(regStart) ?? ""),
-                regEnd: whollyOff ? "" : (TimeString.parse24(regEnd) ?? ""),
-                otStart: whollyOff ? "" : (TimeString.parse24(otStart) ?? ""),
-                otEnd: whollyOff ? "" : (TimeString.parse24(otEnd) ?? ""),
+                regStart: clearWork ? "" : (TimeString.parse24(regStart) ?? ""),
+                regEnd: clearWork ? "" : (TimeString.parse24(regEnd) ?? ""),
+                otStart: clearWork ? "" : (TimeString.parse24(otStart) ?? ""),
+                otEnd: clearWork ? "" : (TimeString.parse24(otEnd) ?? ""),
                 offReason: flatReason, offPortion: flatPortion, note: dayNote
             )
         }
@@ -459,6 +526,16 @@ private struct EditablePeriod: Identifiable, Equatable {
         return Segment(kind: kind, start: s, end: e,
                        note: note.trimmingCharacters(in: .whitespacesAndNewlines))
     }
+}
+
+/// Editor-side representation of one off block (12-hour display times for the
+/// timed case). Converted to a wire `DayOff` at save.
+private struct EditableOff: Identifiable, Equatable {
+    let id = UUID()
+    var reason: String    // DayType slug
+    var portion: String   // full | am | pm | timed
+    var start: String     // 12-hour display (timed only)
+    var end: String
 }
 
 /// One editable work-period row: kind toggle, start→end, note, remove.
@@ -499,6 +576,59 @@ private struct PeriodRow: View {
         TextField(placeholder, text: binding)
             .textFieldStyle(.roundedBorder)
             .frame(width: 78)
+            .foregroundStyle(TimeString.isValid(binding.wrappedValue) ? Color.primary : Color.red)
+            .onSubmit { binding.wrappedValue = TimeString.normalizedDisplay(binding.wrappedValue) }
+    }
+}
+
+/// One editable off row: reason, a Full/AM/PM/Timed toggle, and — when Timed —
+/// a start→end pair.
+private struct OffRow: View {
+    @Binding var block: EditableOff
+    let reasons: [OffType]
+    let reasonLabel: (String) -> String
+    let portions: [OffPortionOption]
+    let onRemove: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 6) {
+                Picker("", selection: $block.reason) {
+                    // Include a retired reason so an old sheet still renders it.
+                    if !block.reason.isEmpty && !reasons.contains(where: { $0.slug == block.reason }) {
+                        Text(reasonLabel(block.reason)).tag(block.reason)
+                    }
+                    ForEach(reasons) { Text($0.label).tag($0.slug) }
+                }
+                .labelsHidden()
+                Spacer()
+                Button(role: .destructive, action: onRemove) {
+                    Image(systemName: "minus.circle.fill")
+                }
+                .buttonStyle(.borderless)
+                .foregroundStyle(.secondary)
+                .help("Remove this time off")
+            }
+            Picker("", selection: $block.portion) {
+                ForEach(portions) { p in Text(p.label).tag(p.value) }
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            if block.portion == "timed" {
+                HStack(spacing: 8) {
+                    timeField($block.start, placeholder: "start")
+                    Text("→").foregroundStyle(.secondary)
+                    timeField($block.end, placeholder: "end")
+                }
+            }
+        }
+        .padding(.vertical, 2)
+    }
+
+    private func timeField(_ binding: Binding<String>, placeholder: String) -> some View {
+        TextField(placeholder, text: binding)
+            .textFieldStyle(.roundedBorder)
+            .frame(width: 90)
             .foregroundStyle(TimeString.isValid(binding.wrappedValue) ? Color.primary : Color.red)
             .onSubmit { binding.wrappedValue = TimeString.normalizedDisplay(binding.wrappedValue) }
     }

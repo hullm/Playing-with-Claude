@@ -58,6 +58,12 @@ struct APIClient {
         try await get("timesheet/\(periodID)")
     }
 
+    /// The admin-managed catalog of work kinds and off reasons. May 404 on an
+    /// older server that predates the endpoint — callers fall back gracefully.
+    func dayTypes() async throws -> DayTypesResponse {
+        try await get("day-types")
+    }
+
     /// PUT a single day's edits; returns the refreshed card.
     func updateDay(periodID: Int, update: DayUpdate) async throws -> Timesheet {
         try await send("timesheet/\(periodID)/day", method: "PUT", body: update)

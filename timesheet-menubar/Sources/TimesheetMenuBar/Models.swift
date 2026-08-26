@@ -68,13 +68,48 @@ struct OffPortionOption: Codable, Identifiable, Equatable, Hashable {
     var id: String { value }
 }
 
-/// One reason a portion of a day is off. A day can now hold two — e.g. a
-/// morning at a screening (`am`) and an afternoon sick (`pm`) — and each
-/// portion's hours are charged to the leave bucket its reason names, so both
-/// must be recorded, not just the first.
+/// One reason a portion of a day is off. A day can hold several — e.g. a
+/// morning at a screening (`am`) and an afternoon sick (`pm`) — each charged to
+/// the leave bucket its reason names. `full`/`am`/`pm` pay POLICY hours and
+/// carry no times; `timed` pays CLOCK hours and carries real `start`/`end`.
 struct DayOff: Codable, Equatable, Hashable {
-    let portion: String   // "full" | "am" | "pm"
-    let reason: String    // a DayType.slug
+    let portion: String       // "full" | "am" | "pm" | "timed"
+    let reason: String        // a DayType.slug
+    let start: String?        // "HH:MM" 24-hour, present (non-null) only for "timed"
+    let end: String?
+}
+
+/// GET /day-types — the admin-managed catalog of work kinds and off reasons.
+/// Preferred over hardcoding slugs; retired off types come back `active: false`
+/// (still needed to label an old sheet, but not offered when creating).
+struct DayTypesResponse: Codable, Equatable {
+    let work: [WorkType]
+    let off: [OffType]
+}
+
+struct WorkType: Codable, Identifiable, Equatable, Hashable {
+    let slug: String
+    let label: String
+    let kind: String     // "reg" | "ot" — what goes in segments[].kind
+    var id: String { slug }
+}
+
+struct OffType: Codable, Identifiable, Equatable, Hashable {
+    let slug: String     // what goes in off[].reason
+    let label: String
+    let active: Bool     // false = retired; label it, but don't offer it
+    var id: String { slug }
+
+    private enum CodingKeys: String, CodingKey { case slug, label, active }
+    init(slug: String, label: String, active: Bool) {
+        self.slug = slug; self.label = label; self.active = active
+    }
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        slug = try c.decode(String.self, forKey: .slug)
+        label = (try? c.decode(String.self, forKey: .label)) ?? slug
+        active = (try? c.decodeIfPresent(Bool.self, forKey: .active)) ?? true
+    }
 }
 
 /// One work period within a day. Hours are the SUM of a day's periods, never
@@ -173,7 +208,8 @@ struct Day: Codable, Identifiable, Equatable {
     var offList: [DayOff] {
         if let off = off { return off }
         if !offReason.isEmpty {
-            return [DayOff(portion: offPortion.isEmpty ? "full" : offPortion, reason: offReason)]
+            return [DayOff(portion: offPortion.isEmpty ? "full" : offPortion,
+                           reason: offReason, start: nil, end: nil)]
         }
         return []
     }
@@ -195,6 +231,8 @@ struct Timesheet: Codable, Equatable {
     let fullDayHours: Double
     let submitBlockedUntil: String?   // human string ("Fri Jul 17 at 3:30 PM") or null
     let totals: HourTotals
+    // Legacy in-timesheet catalogs. The new server exposes these via
+    // GET /day-types instead, so tolerate their absence (default []).
     let dayTypes: [DayType]
     let offPortions: [OffPortionOption]
     var days: [Day]
@@ -202,6 +240,25 @@ struct Timesheet: Codable, Equatable {
     struct Defaults: Codable, Equatable {
         let regStart: String
         let regEnd: String
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case period, status, editable, defaults, fullDayHours
+        case submitBlockedUntil, totals, dayTypes, offPortions, days
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        period = try c.decode(PeriodInfo.self, forKey: .period)
+        status = try c.decode(String.self, forKey: .status)
+        editable = try c.decode(Bool.self, forKey: .editable)
+        defaults = try c.decode(Defaults.self, forKey: .defaults)
+        fullDayHours = try c.decode(Double.self, forKey: .fullDayHours)
+        submitBlockedUntil = try c.decodeIfPresent(String.self, forKey: .submitBlockedUntil)
+        totals = try c.decode(HourTotals.self, forKey: .totals)
+        dayTypes = (try? c.decode([DayType].self, forKey: .dayTypes)) ?? []
+        offPortions = (try? c.decode([OffPortionOption].self, forKey: .offPortions)) ?? []
+        days = try c.decode([Day].self, forKey: .days)
     }
 
     var id: Int { period.id }
