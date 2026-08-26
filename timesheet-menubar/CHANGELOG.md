@@ -24,6 +24,9 @@ _Nothing yet._
   hours, surfaced inline).
 - **Adding a half-day off retrims the worked half** — with 8–2 worked, marking
   the morning off leaves 11–2; flipping AM↔PM re-splits the whole day.
+- **Notes live on each block, not the day** — every work period and every
+  time-off entry has its own note, revealed on tap. Notes round-trip on save so
+  editing a day's times never erases a note written elsewhere.
 - **Server-driven day types** via `GET /day-types` — work kinds and off reasons
   come from the admin-managed catalog; retired reasons still label old sheets
   but aren't offered when creating. Falls back to the timesheet's list if the
@@ -32,6 +35,11 @@ _Nothing yet._
 ### Changed
 - The day list shows every block — work and off — in one chronological line,
   with timed off showing its hours (e.g. `Sick 8:00–10:00, 10:00–2:00, OT 6:00–8:00`).
+
+### Removed
+- The **day-level note** field. The server dropped `days[].note` (migration 44);
+  notes now belong to the block they describe. Existing day notes were relocated
+  to the first work or off block server-side.
 
 ## [1.01] — 2026-08-03
 

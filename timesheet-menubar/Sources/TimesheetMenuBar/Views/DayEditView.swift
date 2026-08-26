@@ -16,7 +16,6 @@ struct DayEditView: View {
     let onDismiss: () -> Void
 
     // Shared
-    @State private var note = ""
     @State private var saving = false
     @State private var loaded = false
 
@@ -107,8 +106,6 @@ struct DayEditView: View {
                 Divider()
                 legacyOffSection
             }
-
-            noteField
 
             if let error = state.errorMessage {
                 Text(error).font(.caption).foregroundStyle(.red)
@@ -261,15 +258,6 @@ struct DayEditView: View {
         .onChange(of: offPortion) { _ in if loaded { legacySyncWork() } }
     }
 
-    private var noteField: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text("Day note").font(.caption).foregroundStyle(.secondary)
-            TextField("Optional", text: $note, axis: .vertical)
-                .textFieldStyle(.roundedBorder)
-                .lineLimit(1...3)
-        }
-    }
-
     // MARK: - Validation
 
     private var isValid: Bool {
@@ -386,8 +374,6 @@ struct DayEditView: View {
     // MARK: - Load
 
     private func loadFromDay() {
-        note = day.note
-
         if combined {
             var bs: [EditableBlock] = []
             for seg in day.workPeriods {
@@ -400,7 +386,7 @@ struct DayEditView: View {
                 bs.append(EditableBlock(typeTag: "off:\(e.reason)",
                                         start: e.start.map(TimeString.display12) ?? "",
                                         end: e.end.map(TimeString.display12) ?? "",
-                                        note: "", portion: e.portion.isEmpty ? "full" : e.portion))
+                                        note: e.note ?? "", portion: e.portion.isEmpty ? "full" : e.portion))
             }
             blocks = bs
             sortBlocks()
@@ -503,10 +489,11 @@ struct DayEditView: View {
     private func save() {
         guard !saving else { return }
         saving = true
-        let dayNote = note.trimmingCharacters(in: .whitespacesAndNewlines)
 
         let update: DayUpdate
         if combined {
+            // Carry every block's note through so a note the web app wrote on a
+            // segment or off entry isn't silently erased by this write.
             let segments = blocks.compactMap { b -> Segment? in
                 guard b.isWork else { return nil }
                 let s = TimeString.parse24(b.start) ?? ""
@@ -520,11 +507,12 @@ struct DayEditView: View {
                 let timed = b.portion == "timed"
                 return DayOff(portion: b.portion, reason: b.reason,
                               start: timed ? (TimeString.parse24(b.start) ?? "") : nil,
-                              end: timed ? (TimeString.parse24(b.end) ?? "") : nil)
+                              end: timed ? (TimeString.parse24(b.end) ?? "") : nil,
+                              note: b.note.trimmingCharacters(in: .whitespacesAndNewlines))
             }
             update = DayUpdate(date: day.date, segments: segments, off: off,
                                regStart: nil, regEnd: nil, otStart: nil, otEnd: nil,
-                               offReason: nil, offPortion: nil, note: dayNote)
+                               offReason: nil, offPortion: nil)
         } else {
             let clearWork = isFullDayOffLegacy
             let flatReason = offReason
@@ -533,14 +521,14 @@ struct DayEditView: View {
                 let segments = clearWork ? [] : periods.compactMap { $0.toSegment() }
                 update = DayUpdate(date: day.date, segments: segments, off: nil,
                                    regStart: nil, regEnd: nil, otStart: nil, otEnd: nil,
-                                   offReason: flatReason, offPortion: flatPortion, note: dayNote)
+                                   offReason: flatReason, offPortion: flatPortion)
             } else {
                 update = DayUpdate(date: day.date, segments: nil, off: nil,
                                    regStart: clearWork ? "" : (TimeString.parse24(regStart) ?? ""),
                                    regEnd: clearWork ? "" : (TimeString.parse24(regEnd) ?? ""),
                                    otStart: clearWork ? "" : (TimeString.parse24(otStart) ?? ""),
                                    otEnd: clearWork ? "" : (TimeString.parse24(otEnd) ?? ""),
-                                   offReason: flatReason, offPortion: flatPortion, note: dayNote)
+                                   offReason: flatReason, offPortion: flatPortion)
             }
         }
 
@@ -588,7 +576,7 @@ private struct EditableBlock: Identifiable, Equatable {
     var typeTag: String
     var start: String     // 12-hour display (work, or timed off)
     var end: String
-    var note: String      // work only
+    var note: String      // free text about this block (work or off)
     var portion: String   // off only: full | am | pm | timed
 
     var isWork: Bool { typeTag.hasPrefix("work:") }
@@ -608,6 +596,7 @@ private struct CombinedRow: View {
     let portions: [OffPortionOption]
     let onRemove: () -> Void
     let onCommit: () -> Void
+    @State private var showNote = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
@@ -644,8 +633,6 @@ private struct CombinedRow: View {
                     Text("→").foregroundStyle(.secondary)
                     timeField($block.end, placeholder: "end")
                 }
-                TextField("Note (optional)", text: $block.note)
-                    .textFieldStyle(.roundedBorder).font(.caption)
             } else {
                 Picker("", selection: $block.portion) {
                     ForEach(portions) { p in Text(p.label).tag(p.value) }
@@ -659,6 +646,20 @@ private struct CombinedRow: View {
                         timeField($block.end, placeholder: "end")
                     }
                 }
+            }
+
+            // A note belongs to the block, work or off. Reveal the field on
+            // request rather than always showing an empty box.
+            if showNote || !block.note.isEmpty {
+                TextField("Note (optional)", text: $block.note)
+                    .textFieldStyle(.roundedBorder).font(.caption)
+            } else {
+                Button { showNote = true } label: {
+                    Label("Add note", systemImage: "text.bubble")
+                }
+                .buttonStyle(.borderless)
+                .font(.caption)
+                .foregroundStyle(.secondary)
             }
         }
         .padding(.vertical, 4)

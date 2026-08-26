@@ -77,6 +77,8 @@ struct DayOff: Codable, Equatable, Hashable {
     let reason: String        // a DayType.slug
     let start: String?        // "HH:MM" 24-hour, present (non-null) only for "timed"
     let end: String?
+    let note: String?         // free text about this absence; "" when empty (optional
+                              // so an older server that omits it still decodes)
 }
 
 /// GET /day-types — the admin-managed catalog of work kinds and off reasons.
@@ -161,7 +163,8 @@ struct Day: Codable, Identifiable, Equatable {
     var otEnd: String
     var offReason: String   // a DayType.slug, or "" — legacy mirror only
     var offPortion: String  // "full" | "am" | "pm", or "" — legacy mirror only
-    var note: String
+    // NOTE: the day-level `note` was removed server-side (migration 44). Notes
+    // now live on each work segment and each off entry, never on the day.
     let hours: HourTotals
     let saved: Bool         // false = pre-filled default, not yet written
 
@@ -170,7 +173,7 @@ struct Day: Codable, Identifiable, Equatable {
     // Defensive decoding: coerce nulls to "" so the editor always has strings.
     private enum CodingKeys: String, CodingKey {
         case date, weekday, isWeekend, segments, off, regStart, regEnd, otStart, otEnd
-        case offReason, offPortion, note, hours, saved
+        case offReason, offPortion, hours, saved
     }
 
     init(from decoder: Decoder) throws {
@@ -187,7 +190,6 @@ struct Day: Codable, Identifiable, Equatable {
         otEnd = (try? c.decodeIfPresent(String.self, forKey: .otEnd)) ?? ""
         offReason = (try? c.decodeIfPresent(String.self, forKey: .offReason)) ?? ""
         offPortion = (try? c.decodeIfPresent(String.self, forKey: .offPortion)) ?? ""
-        note = (try? c.decodeIfPresent(String.self, forKey: .note)) ?? ""
         hours = (try? c.decode(HourTotals.self, forKey: .hours))
             ?? HourTotals(reg: 0, ot: 0, off: 0, total: 0)
         saved = (try? c.decode(Bool.self, forKey: .saved)) ?? true
@@ -209,7 +211,7 @@ struct Day: Codable, Identifiable, Equatable {
         if let off = off { return off }
         if !offReason.isEmpty {
             return [DayOff(portion: offPortion.isEmpty ? "full" : offPortion,
-                           reason: offReason, start: nil, end: nil)]
+                           reason: offReason, start: nil, end: nil, note: nil)]
         }
         return []
     }
@@ -299,7 +301,9 @@ struct DayUpdate: Codable {
     var otEnd: String?
     var offReason: String?       // legacy flat fallback (omitted when `off` sent)
     var offPortion: String?
-    let note: String
+    // No day-level note: notes live on each segment and each off entry. (A
+    // day-level note in the body is silently ignored by the server, so we don't
+    // send one.)
 }
 
 // Standard error envelope on 409/422: { "error": "…" }
