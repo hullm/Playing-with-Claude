@@ -289,17 +289,12 @@ private struct DayRow: View {
         .disabled(!editable)
     }
 
-    // Work and time off can coexist (a call-out on a sick day), so show both
-    // when both are present. The right-aligned total carries the summed hours.
+    // Every block — work and off — in one chronological list, matching the
+    // editor. The right-aligned total carries the summed hours.
     @ViewBuilder private var summaryLine: some View {
-        let work = workText
-        let off = offText
-        if !work.isEmpty && !off.isEmpty {
-            Text("\(work) · off: \(off)")
-        } else if !off.isEmpty {
-            Text("Time off — \(off)")
-        } else if !work.isEmpty {
-            Text(work)
+        let text = blockDescriptors.map { $0.text }.joined(separator: ", ")
+        if !text.isEmpty {
+            Text(text)
         } else if day.isWeekend {
             Text("Weekend")
         } else {
@@ -309,43 +304,48 @@ private struct DayRow: View {
 
     private func label(_ slug: String) -> String { reasonLabels[slug] ?? slug }
 
-    /// Work ranges from the segment list (new API), else the flat pair (old
-    /// API). Never the misleading first-in→last-out span. "" when no work.
-    private var workText: String {
-        if !day.workPeriods.isEmpty {
-            return day.workPeriods.map { seg in
-                let range = "\(display(seg.start))–\(display(seg.end))"
-                return seg.kind == .ot ? "OT \(range)" : range
-            }.joined(separator: ", ")
-        }
-        var parts: [String] = []
-        if !day.regStart.isEmpty || !day.regEnd.isEmpty {
-            parts.append("\(display(day.regStart))–\(display(day.regEnd))")
-        }
-        if !day.otStart.isEmpty || !day.otEnd.isEmpty {
-            parts.append("OT \(display(day.otStart))–\(display(day.otEnd))")
-        }
-        return parts.joined(separator: "  ")
-    }
+    /// A block's sort position + its rendered text. Full-day off leads, then AM,
+    /// then timed/work by start, then PM — the same ordering as the editor.
+    private var blockDescriptors: [(key: Int, text: String)] {
+        var items: [(key: Int, text: String)] = []
 
-    /// Off blocks joined: "Sick 8:00–10:00" (timed), "Personal Day (am) + Cancer
-    /// Screening (pm)" (policy portions), or just the reason for a full day.
-    private var offText: String {
-        day.offList.map { e in
+        // Work — the segment list (new API) or the flat pair (old API).
+        if !day.workPeriods.isEmpty {
+            for seg in day.workPeriods {
+                let range = "\(display(seg.start))–\(display(seg.end))"
+                items.append((minutes(seg.start) ?? 100_000, seg.kind == .ot ? "OT \(range)" : range))
+            }
+        } else {
+            if !day.regStart.isEmpty || !day.regEnd.isEmpty {
+                items.append((minutes(day.regStart) ?? 100_000, "\(display(day.regStart))–\(display(day.regEnd))"))
+            }
+            if !day.otStart.isEmpty || !day.otEnd.isEmpty {
+                items.append((minutes(day.otStart) ?? 100_000, "OT \(display(day.otStart))–\(display(day.otEnd))"))
+            }
+        }
+
+        // Off blocks.
+        for e in day.offList {
             switch e.portion {
             case "timed":
-                return "\(label(e.reason)) \(display(e.start ?? ""))–\(display(e.end ?? ""))"
-            case "am", "pm":
-                return "\(label(e.reason)) (\(e.portion))"
+                items.append((minutes(e.start ?? "") ?? 100_000,
+                              "\(label(e.reason)) \(display(e.start ?? ""))–\(display(e.end ?? ""))"))
+            case "am":
+                items.append((0, "\(label(e.reason)) (am)"))
+            case "pm":
+                items.append((12 * 60, "\(label(e.reason)) (pm)"))
             default:
-                return label(e.reason)
+                items.append((-1, label(e.reason)))   // full day leads
             }
-        }.joined(separator: " + ")
+        }
+
+        return items.enumerated()
+            .sorted { $0.element.key != $1.element.key ? $0.element.key < $1.element.key : $0.offset < $1.offset }
+            .map { $0.element }
     }
 
-    private func display(_ s: String) -> String {
-        s.isEmpty ? "?" : TimeString.display12(s)
-    }
+    private func minutes(_ s: String) -> Int? { s.isEmpty ? nil : TimeString.minutes(s) }
+    private func display(_ s: String) -> String { s.isEmpty ? "?" : TimeString.display12(s) }
 }
 
 // MARK: - Small components

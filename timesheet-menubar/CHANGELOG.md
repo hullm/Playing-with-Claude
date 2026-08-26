@@ -14,21 +14,24 @@ _Nothing yet._
   afternoon sick. Split days show both reasons ("Cancer Screening (am) + Sick
   Day (pm)"). Each portion's hours are charged to the leave bucket its reason
   names. Uses the API's per-portion `off` array.
-- **Time off is now a list of blocks** in the day editor — add/remove rows,
-  each a reason plus **Full / AM / PM / Timed**. **Timed** off carries real
-  start→end times and pays clock hours (a 2-hour appointment), versus
-  Full/AM/PM which pay policy hours.
-- **Work can coexist with an off day** — log a call-out OT on a sick day. The
-  work section is no longer cleared or dimmed by time off (the server refuses
-  only work that overlaps the off hours, surfaced inline).
+- **One chronological list of blocks** in the day editor — work and time off
+  in a single ordered list. Each row picks a type (a work kind or an off
+  reason); work rows carry start→end + a note, off rows carry a portion
+  (**Full / AM / PM / Timed**). **Timed** off carries real start→end times and
+  pays clock hours (a 2-hour appointment), versus Full/AM/PM policy hours.
+- **Work can coexist with an off day** — log a call-out OT on a sick day. Work
+  isn't cleared by time off (the server refuses only work that overlaps the off
+  hours, surfaced inline).
+- **Adding a half-day off retrims the worked half** — with 8–2 worked, marking
+  the morning off leaves 11–2; flipping AM↔PM re-splits the whole day.
 - **Server-driven day types** via `GET /day-types` — work kinds and off reasons
   come from the admin-managed catalog; retired reasons still label old sheets
   but aren't offered when creating. Falls back to the timesheet's list if the
   endpoint is absent.
 
 ### Changed
-- The day list shows work and time off together, with timed off showing its
-  hours (e.g. `10:00–2:00, OT 6:00–8:00 · off: Sick 8:00–10:00`).
+- The day list shows every block — work and off — in one chronological line,
+  with timed off showing its hours (e.g. `Sick 8:00–10:00, 10:00–2:00, OT 6:00–8:00`).
 
 ## [1.01] — 2026-08-03
 
