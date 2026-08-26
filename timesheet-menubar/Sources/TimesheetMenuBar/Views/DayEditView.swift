@@ -168,14 +168,12 @@ struct DayEditView: View {
                 Divider().opacity(0.4)
             }
 
-            Menu {
-                Button("Work period") { addBlock(work: true) }
-                Button("Time off") { addBlock(work: false) }
+            Button {
+                addBlock()
             } label: {
                 Label("Add block", systemImage: "plus")
             }
-            .menuStyle(.borderlessButton)
-            .fixedSize()
+            .buttonStyle(.borderless)
             .font(.callout)
 
             if let msg = combinedValidationMessage {
@@ -355,13 +353,10 @@ struct DayEditView: View {
 
     // MARK: - Mutation
 
-    private func addBlock(work: Bool) {
-        if work {
-            blocks.append(EditableBlock(typeTag: defaultWorkTag, start: "", end: "", note: "", portion: "full"))
-        } else {
-            let slug = offTypesForEntry.first?.slug ?? ""
-            blocks.append(EditableBlock(typeTag: "off:\(slug)", start: "", end: "", note: "", portion: "full"))
-        }
+    /// Add a new block, defaulting to a work period — the type dropdown on the
+    /// row switches it to any work kind or off reason.
+    private func addBlock() {
+        blocks.append(EditableBlock(typeTag: defaultWorkTag, start: "", end: "", note: "", portion: "full"))
         sortBlocks()
     }
     private func removeBlock(_ id: EditableBlock.ID) { blocks.removeAll { $0.id == id } }
