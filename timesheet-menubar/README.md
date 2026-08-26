@@ -39,7 +39,8 @@ app-switcher entry.
 - **Launch at login:** a toggle in the gear menu (via `SMAppService`).
 
 Version history lives in [CHANGELOG.md](CHANGELOG.md), using semantic
-versioning (MAJOR.MINOR.PATCH). The current release is **1.0.2**.
+versioning (MAJOR.MINOR.PATCH). The latest released version is **1.0.2**;
+**1.0.3** is in progress.
 
 ## Requirements
 

@@ -4,7 +4,7 @@ All notable changes to the Time Sheets menu bar app. Versions follow
 [semantic versioning](https://semver.org) (MAJOR.MINOR.PATCH) and track
 `CFBundleShortVersionString` in `Info.plist` and `AppConfig.appVersion`.
 
-## [Unreleased]
+## [1.0.3] — Unreleased
 
 _Nothing yet._
 
