@@ -37,6 +37,10 @@ struct DayEditView: View {
     @State private var offReason = ""     // "" = none, else a DayType.slug
     @State private var offPortion = "full"
 
+    // Snapshot of the day's full work span, taken the first time a half-day off
+    // splits it, so flipping AM↔PM re-splits the whole day, not the trimmed half.
+    @State private var preSplitWork: MinuteRange?
+
     private var usesSegments: Bool { day.supportsSegments }
     private var usesOffArray: Bool { day.supportsOffArray }
 
@@ -78,6 +82,15 @@ struct DayEditView: View {
     /// Dim/disable the work section only on the old server's full-day off, where
     /// work and off can't coexist. The new API never dims — work is independent.
     private var dimWork: Bool { !usesOffArray && isFullDayOffLegacy }
+
+    /// "am"/"pm" when the day has exactly one half-day off block — the case that
+    /// drives the worked-half auto-update; "" otherwise (so reason edits, full
+    /// days, timed off, and multi-block days don't retrigger a split).
+    private var halfPortionKey: String {
+        guard offBlocks.count == 1, let b = offBlocks.first,
+              b.portion == "am" || b.portion == "pm" else { return "" }
+        return b.portion
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -214,11 +227,14 @@ struct DayEditView: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
-        // A single half day with no work yet fills the worked half (kept as a
-        // convenience; never overrides work you've entered).
-        .onChange(of: offBlocks) { _ in
+        // Picking a single AM/PM off updates the worked half: it trims an
+        // existing single work period to the other half, or fills an empty day
+        // from your standard hours. Fires only when the half selection changes.
+        .onChange(of: halfPortionKey) { key in
             guard loaded else { return }
-            autoFillWorkedHalfIfNeeded()
+            if key.isEmpty { preSplitWork = nil; return }
+            if preSplitWork == nil { preSplitWork = currentSingleWorkRange() ?? workdayRange() }
+            applyHalfSplit(key)
         }
     }
 
@@ -428,14 +444,60 @@ struct DayEditView: View {
         }
     }
 
-    /// New API convenience: a single AM/PM off block with no work yet fills the
-    /// worked half. Never touches work you've already entered.
-    private func autoFillWorkedHalfIfNeeded() {
-        guard offBlocks.count == 1, let b = offBlocks.first,
-              b.portion == "am" || b.portion == "pm" else { return }
-        let hasWork = usesSegments ? !periods.isEmpty : !(regStart.isEmpty && regEnd.isEmpty)
-        guard !hasWork else { return }
-        applyHalfDay(b.portion)
+    /// The single existing work period's span (minutes), or nil unless there's
+    /// exactly one — a multi-period day is left alone.
+    private func currentSingleWorkRange() -> MinuteRange? {
+        if usesSegments {
+            let real = periods.filter { !$0.start.isEmpty || !$0.end.isEmpty }
+            guard real.count == 1,
+                  let s = TimeString.parse24(real[0].start).flatMap(TimeString.minutes),
+                  let e = TimeString.parse24(real[0].end).flatMap(TimeString.minutes), e > s
+            else { return nil }
+            return MinuteRange(start: s, end: e)
+        } else {
+            guard let s = TimeString.parse24(regStart).flatMap(TimeString.minutes),
+                  let e = TimeString.parse24(regEnd).flatMap(TimeString.minutes), e > s
+            else { return nil }
+            return MinuteRange(start: s, end: e)
+        }
+    }
+
+    /// The standard workday span (minutes) from defaults or the day's reg times.
+    private func workdayRange() -> MinuteRange? {
+        guard let wd = workday,
+              let s = TimeString.minutes(wd.start),
+              let e = TimeString.minutes(wd.end), e > s else { return nil }
+        return MinuteRange(start: s, end: e)
+    }
+
+    /// Set the worked half from the snapshot span for an AM/PM off: "am" =
+    /// morning off → work the afternoon; "pm" = afternoon off → work the morning.
+    private func applyHalfSplit(_ portion: String) {
+        guard let src = preSplitWork else { return }
+        let mid = (src.start + src.end) / 2
+        let (hs, he) = portion == "am" ? (mid, src.end) : (src.start, mid)
+        guard he > hs else { return }
+        setSingleWorkPeriod(startMin: hs, endMin: he)
+    }
+
+    /// Overwrite the single work period (or create one) with the given span,
+    /// leaving a multi-period day untouched.
+    private func setSingleWorkPeriod(startMin: Int, endMin: Int) {
+        let sDisp = TimeString.display12(TimeString.fromMinutes(startMin))
+        let eDisp = TimeString.display12(TimeString.fromMinutes(endMin))
+        if usesSegments {
+            let realIdx = periods.indices.filter { !periods[$0].start.isEmpty || !periods[$0].end.isEmpty }
+            if realIdx.count > 1 { return }   // multi-period → leave to the user
+            if let i = realIdx.first {
+                periods[i].start = sDisp
+                periods[i].end = eDisp
+            } else {
+                periods.append(EditablePeriod(kind: .reg, start: sDisp, end: eDisp, note: ""))
+            }
+        } else {
+            regStart = sDisp
+            regEnd = eDisp
+        }
     }
 
     /// Old API: clear work on a full day off, fill the worked half on am/pm.
@@ -527,6 +589,9 @@ private struct EditablePeriod: Identifiable, Equatable {
                        note: note.trimmingCharacters(in: .whitespacesAndNewlines))
     }
 }
+
+/// A start–end span in minutes since midnight.
+private struct MinuteRange: Equatable { let start: Int; let end: Int }
 
 /// Editor-side representation of one off block (12-hour display times for the
 /// timed case). Converted to a wire `DayOff` at save.
